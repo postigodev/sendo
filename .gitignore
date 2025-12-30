@@ -1,0 +1,27 @@
+# ===== Rust =====
+/target
+**/target
+
+# ===== Tauri =====
+**/src-tauri/target
+**/src-tauri/.tauri
+
+# ===== Node / Frontend =====
+node_modules/
+dist/
+build/
+
+# ===== Logs =====
+*.log
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Editor =====
+.vscode/
+.idea/
+
+# ===== Env =====
+.env
+.env.*
