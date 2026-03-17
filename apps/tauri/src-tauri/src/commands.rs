@@ -1,6 +1,8 @@
 use desk_remote_core::{
+    ActionResult,
     config::{config_file_path, AppConfig},
-    firetv, spotify, HealthStatus,
+    firetv::{self, FireTvAction, FireTvStatus},
+    spotify, HealthStatus,
 };
 use tauri::command;
 
@@ -31,4 +33,29 @@ pub fn health_check() -> Result<HealthStatus, String> {
             &config.spotify_redirect_url,
         ),
     })
+}
+
+#[command]
+pub fn firetv_status(firetv_ip: Option<String>) -> Result<FireTvStatus, String> {
+    let ip = resolve_firetv_ip(firetv_ip)?;
+    firetv::get_status(&ip).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn firetv_action(action: FireTvAction, firetv_ip: Option<String>) -> Result<ActionResult, String> {
+    let ip = resolve_firetv_ip(firetv_ip)?;
+    let message = firetv::perform_action(&ip, action).map_err(|e| e.to_string())?;
+
+    Ok(ActionResult { message })
+}
+
+fn resolve_firetv_ip(firetv_ip: Option<String>) -> Result<String, String> {
+    if let Some(ip) = firetv_ip.map(|value| value.trim().to_string()) {
+        if !ip.is_empty() {
+            return Ok(ip);
+        }
+    }
+
+    let config = AppConfig::load().map_err(|e| e.to_string())?;
+    Ok(config.firetv_ip)
 }

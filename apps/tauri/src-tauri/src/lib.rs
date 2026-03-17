@@ -7,7 +7,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
-            commands::health_check
+            commands::health_check,
+            commands::firetv_status,
+            commands::firetv_action
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

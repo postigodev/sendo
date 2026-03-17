@@ -12,3 +12,8 @@ pub struct HealthStatus {
     pub firetv_summary: String,
     pub spotify_summary: String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ActionResult {
+    pub message: String,
+}
