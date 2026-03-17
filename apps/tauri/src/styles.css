@@ -182,6 +182,10 @@ button:disabled {
   gap: 14px;
 }
 
+.remote-status {
+  margin-top: 18px;
+}
+
 .status-card {
   border-radius: 18px;
   padding: 16px;
@@ -206,9 +210,26 @@ button:disabled {
   font-size: 0.95rem;
 }
 
+.remote-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.remote-button {
+  min-height: 54px;
+}
+
 @media (max-width: 840px) {
   .hero-grid,
   .panel-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .remote-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
