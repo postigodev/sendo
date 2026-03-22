@@ -7,6 +7,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::save_settings,
+            commands::bindings_list,
+            commands::bindings_save,
+            commands::bindings_delete,
+            commands::bindings_execute,
             commands::health_check,
             commands::firetv_status,
             commands::firetv_action,

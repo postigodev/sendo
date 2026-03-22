@@ -1,5 +1,6 @@
 use desk_remote_core::{
     ActionResult, AuthUrlResult, SpotifyAuthDebug,
+    bindings::{self, Binding, BindingStore},
     config::{config_file_path, AppConfig},
     firetv::{self, FireTvAction, FireTvAppCache, FireTvAppScanResult, FireTvStatus},
     spotify::{self, SpotifyStatus},
@@ -16,6 +17,30 @@ pub fn get_settings() -> Result<AppConfig, String> {
 pub fn save_settings(config: AppConfig) -> Result<AppConfig, String> {
     config.save().map_err(|e| e.to_string())?;
     Ok(config)
+}
+
+#[command]
+pub fn bindings_list() -> Result<BindingStore, String> {
+    bindings::list_bindings().map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn bindings_save(binding: Binding) -> Result<BindingStore, String> {
+    bindings::save_binding(binding).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn bindings_delete(id: String) -> Result<BindingStore, String> {
+    bindings::delete_binding(&id).map_err(|e| e.to_string())
+}
+
+#[command]
+pub async fn bindings_execute(id: String) -> Result<ActionResult, String> {
+    let config = AppConfig::load().map_err(|e| e.to_string())?;
+    let message = bindings::execute_binding(&id, &config)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(ActionResult { message })
 }
 
 #[command]
