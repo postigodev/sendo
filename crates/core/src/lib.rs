@@ -17,3 +17,9 @@ pub struct HealthStatus {
 pub struct ActionResult {
     pub message: String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthUrlResult {
+    pub url: String,
+    pub message: String,
+}

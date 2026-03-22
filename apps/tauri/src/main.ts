@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 type AppConfig = {
   firetv_ip: string;
   spotify_client_id: string;
+  spotify_client_secret: string;
   spotify_redirect_url: string;
+  spotify_target_hints: string;
+  spotify_auth_state: string;
 };
 
 type HealthStatus = {
@@ -27,6 +31,21 @@ type ActionResult = {
   message: string;
 };
 
+type AuthUrlResult = {
+  url: string;
+  message: string;
+};
+
+type SpotifyStatus = {
+  configured: boolean;
+  authenticated: boolean;
+  target_found: boolean;
+  target_name: string | null;
+  summary: string;
+  auth_url: string | null;
+  token_cache_path: string;
+};
+
 type FireTvAction =
   | "connect"
   | "ensure_awake"
@@ -44,12 +63,19 @@ type FireTvAction =
 const defaultConfig: AppConfig = {
   firetv_ip: "",
   spotify_client_id: "",
+  spotify_client_secret: "",
   spotify_redirect_url: "",
+  spotify_target_hints: "fire, tv, amazon, spotify, insignia, toshiba, osint",
+  spotify_auth_state: "",
 };
 
 let currentConfig: AppConfig = { ...defaultConfig };
 let currentHealth: HealthStatus | null = null;
 let currentFireTvStatus: FireTvStatus | null = null;
+let currentSpotifyStatus: SpotifyStatus | null = null;
+let spotifyAuthUrl = "";
+let spotifyCallbackInput = "";
+let spotifyAuthMode = "Auto callback in localhost";
 let busy = false;
 let flashMessage = "";
 let flashIsError = false;
@@ -63,7 +89,7 @@ function render() {
             <div>
               <div class="chips">
                 <span class="chip">Hito 1</span>
-                <span class="chip">Setup + health</span>
+                <span class="chip">Spotify + Fire TV</span>
               </div>
               <h1>Desk Remote control surface</h1>
               <p>
@@ -111,12 +137,32 @@ function render() {
               </label>
 
               <label>
+                <span>Spotify Client Secret</span>
+                <input
+                  id="spotify-client-secret"
+                  name="spotify_client_secret"
+                  placeholder="your-client-secret"
+                  value="${escapeHtml(currentConfig.spotify_client_secret)}"
+                />
+              </label>
+
+              <label>
                 <span>Spotify Redirect URL</span>
                 <input
                   id="spotify-redirect-url"
                   name="spotify_redirect_url"
                   placeholder="http://127.0.0.1:8898/callback"
                   value="${escapeHtml(currentConfig.spotify_redirect_url)}"
+                />
+              </label>
+
+              <label>
+                <span>Spotify target hints</span>
+                <input
+                  id="spotify-target-hints"
+                  name="spotify_target_hints"
+                  placeholder="fire, tv, amazon"
+                  value="${escapeHtml(currentConfig.spotify_target_hints)}"
                 />
               </label>
 
@@ -250,6 +296,95 @@ function render() {
             }>Play/Pause</button>
           </div>
         </section>
+
+        <section class="panel">
+          <h2>Spotify TV control</h2>
+          <p class="hint">
+            Autentica Spotify, detecta el dispositivo TV por hints y ejecuta el
+            toggle inteligente sobre la tele.
+          </p>
+
+          <div class="actions">
+            <button class="button-primary" id="spotify-status-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Check Spotify status
+            </button>
+            <button class="button-secondary" id="spotify-start-auth-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Start Spotify auth
+            </button>
+            <button class="button-secondary" id="spotify-toggle-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Toggle on TV
+            </button>
+          </div>
+
+          ${
+            currentSpotifyStatus
+              ? `
+                <div class="status-list remote-status">
+                  <article class="status-card">
+                    <h3>Session</h3>
+                    <p class="status-copy">${currentSpotifyStatus.authenticated ? "Authenticated" : "Not authenticated"}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Target device</h3>
+                    <p class="status-copy">${escapeHtml(currentSpotifyStatus.target_name ?? "No matching device yet")}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Token cache</h3>
+                    <p class="status-copy">${escapeHtml(currentSpotifyStatus.token_cache_path)}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Summary</h3>
+                    <p class="status-copy">${escapeHtml(currentSpotifyStatus.summary)}</p>
+                  </article>
+                </div>
+              `
+              : `<p class="status-copy">Run a Spotify status check after saving your credentials.</p>`
+          }
+
+          <label>
+            <span>Spotify auth URL</span>
+            <input
+              id="spotify-auth-url"
+              placeholder="Generated after Start Spotify auth"
+              value="${escapeHtml(spotifyAuthUrl)}"
+              readonly
+            />
+          </label>
+
+          ${
+            spotifyAuthUrl
+              ? `<p class="hint">The app opens this URL automatically and waits for the localhost callback. Manual paste is only a fallback if the automatic callback fails.</p>`
+              : ""
+          }
+
+          <p class="meta">${escapeHtml(spotifyAuthMode)}</p>
+
+          <details>
+            <summary>Manual fallback</summary>
+            <label>
+              <span>Spotify auth code or callback URL</span>
+              <input
+                id="spotify-callback-input"
+                placeholder="Paste code or callback URL here"
+                value="${escapeHtml(spotifyCallbackInput)}"
+              />
+            </label>
+
+            <div class="actions">
+              <button class="button-secondary" id="spotify-finish-auth-button" type="button" ${
+                busy ? "disabled" : ""
+              }>
+                Finish Spotify auth
+              </button>
+            </div>
+          </details>
+        </section>
       </section>
     </main>
   `;
@@ -271,6 +406,26 @@ function render() {
     .querySelector<HTMLButtonElement>("#firetv-check-button")
     ?.addEventListener("click", () => {
       void refreshFireTvStatus("Fire TV status refreshed.");
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-status-button")
+    ?.addEventListener("click", () => {
+      void refreshSpotifyStatus("Spotify status refreshed.");
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-start-auth-button")
+    ?.addEventListener("click", () => {
+      void startSpotifyAuth();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-finish-auth-button")
+    ?.addEventListener("click", () => {
+      void finishSpotifyAuth();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-toggle-button")
+    ?.addEventListener("click", () => {
+      void toggleSpotifyOnTv();
     });
   document.querySelectorAll<HTMLButtonElement>(".remote-button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -306,7 +461,10 @@ async function onSave(event: SubmitEvent) {
   currentConfig = {
     firetv_ip: readField(formData, "firetv_ip"),
     spotify_client_id: readField(formData, "spotify_client_id"),
+    spotify_client_secret: readField(formData, "spotify_client_secret"),
     spotify_redirect_url: readField(formData, "spotify_redirect_url"),
+    spotify_target_hints: readField(formData, "spotify_target_hints"),
+    spotify_auth_state: currentConfig.spotify_auth_state,
   };
 
   busy = true;
@@ -336,6 +494,8 @@ async function loadAll(message = "Configuration loaded.") {
     currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
       firetvIp: currentConfig.firetv_ip,
     });
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? "";
     busy = false;
     flash(message);
     render();
@@ -372,6 +532,106 @@ async function refreshFireTvStatus(message = "Fire TV status refreshed.") {
     currentHealth = await invoke<HealthStatus>("health_check");
     busy = false;
     flash(message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function refreshSpotifyStatus(message = "Spotify status refreshed.") {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Checking Spotify status...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    flash(message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function startSpotifyAuth() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Starting Spotify auth...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    const result = await invoke<AuthUrlResult>("spotify_start_auth");
+    spotifyAuthUrl = result.url;
+    spotifyAuthMode = "Waiting for Spotify callback on localhost...";
+    render();
+
+    const pendingStatus = invoke<SpotifyStatus>("spotify_finish_auth_via_local_callback");
+    await openUrl(result.url);
+    currentSpotifyStatus = await pendingStatus;
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    spotifyAuthMode = "Spotify auth completed through localhost callback";
+    flash("Spotify authentication completed.");
+    render();
+  } catch (error) {
+    busy = false;
+    spotifyAuthMode = "Automatic Spotify auth failed; use manual callback input if needed";
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function finishSpotifyAuth() {
+  syncConfigFromInputs();
+  spotifyCallbackInput =
+    document.querySelector<HTMLInputElement>("#spotify-callback-input")?.value.trim() ??
+    spotifyCallbackInput;
+
+  busy = true;
+  flash("Finishing Spotify auth...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_finish_auth", {
+      codeOrCallback: spotifyCallbackInput,
+    });
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    spotifyAuthMode = "Spotify auth completed from pasted callback";
+    flash("Spotify authentication completed.");
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function toggleSpotifyOnTv() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Running Spotify TV toggle...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    const result = await invoke<ActionResult>("spotify_toggle_tv");
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    busy = false;
+    flash(result.message);
     render();
   } catch (error) {
     busy = false;
@@ -420,18 +680,37 @@ function syncConfigFromInputs() {
     document.querySelector<HTMLInputElement>("#spotify-client-id");
   const spotifyRedirectUrlInput =
     document.querySelector<HTMLInputElement>("#spotify-redirect-url");
+  const spotifyClientSecretInput =
+    document.querySelector<HTMLInputElement>("#spotify-client-secret");
+  const spotifyTargetHintsInput =
+    document.querySelector<HTMLInputElement>("#spotify-target-hints");
+  const spotifyCallbackValue =
+    document.querySelector<HTMLInputElement>("#spotify-callback-input");
 
   currentConfig = {
     firetv_ip: fireTvInput?.value.trim() ?? currentConfig.firetv_ip,
     spotify_client_id:
       spotifyClientIdInput?.value.trim() ?? currentConfig.spotify_client_id,
+    spotify_client_secret:
+      spotifyClientSecretInput?.value.trim() ?? currentConfig.spotify_client_secret,
     spotify_redirect_url:
       spotifyRedirectUrlInput?.value.trim() ?? currentConfig.spotify_redirect_url,
+    spotify_target_hints:
+      spotifyTargetHintsInput?.value.trim() ?? currentConfig.spotify_target_hints,
+    spotify_auth_state: currentConfig.spotify_auth_state,
   };
+
+  spotifyCallbackInput = spotifyCallbackValue?.value.trim() ?? spotifyCallbackInput;
 }
 
 function asMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function persistCurrentConfig() {
+  currentConfig = await invoke<AppConfig>("save_settings", {
+    config: currentConfig,
+  });
 }
 
 function escapeHtml(value: string) {
