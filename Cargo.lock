@@ -3109,16 +3109,16 @@ dependencies = [
 
 [[package]]
 name = "rspotify"
-version = "0.13.3"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71aa4a990ef1bacbed874fbab621e16c61a8b5a56854ada6b2bcccf19acb5795"
+checksum = "cd6b781f7f2b4afac99cd6cb9506a427a128601cd3206a59156fad095c7280e1"
 dependencies = [
  "async-stream",
  "async-trait",
  "base64 0.22.1",
  "chrono",
  "futures",
- "getrandom 0.2.16",
+ "getrandom 0.3.4",
  "log",
  "maybe-async",
  "rspotify-http",
@@ -3127,42 +3127,42 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "url",
 ]
 
 [[package]]
 name = "rspotify-http"
-version = "0.13.3"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a193f73ee55ab66aeb0337170d120bc73ec4963b150d9c66d68b28d14bc5ac5f"
+checksum = "13dc03fb2b9aa31f484f1d47ab62a70b836e26477d1ab1a97559c5ca43af186d"
 dependencies = [
  "async-trait",
  "log",
  "maybe-async",
  "reqwest",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
 name = "rspotify-macros"
-version = "0.13.3"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b78387b0ebb8da6d4c72e728496b09701b7054c0ef88ea2f4f40e46b9107a6de"
+checksum = "10364677556c46b4e9e922360979db311cd0d7e598eaf7861497b56068fdc9e4"
 
 [[package]]
 name = "rspotify-model"
-version = "0.13.3"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b6ce0f0ecf4eb3b0b8ab7c6932328d03040dd77169b1c533a3ead1308985af6"
+checksum = "17695906aa54f120d1e43bcf5e8b19c64b1a9194d446af39e8f486107e7bbc1a"
 dependencies = [
  "chrono",
  "enum_dispatch",
  "serde",
  "serde_json",
  "strum",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -3664,23 +3664,22 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
-version = "0.26.3"
+version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
+checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
 dependencies = [
  "strum_macros",
 ]
 
 [[package]]
 name = "strum_macros"
-version = "0.26.4"
+version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "rustversion",
  "syn 2.0.112",
 ]
 
