@@ -1,6 +1,7 @@
+use crate::config::app_data_dir;
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::{fs, path::PathBuf, process::Command, time::{SystemTime, UNIX_EPOCH}};
 
 const DEFAULT_ADB_PORT: &str = "5555";
 
@@ -36,6 +37,27 @@ pub struct FireTvPrepResult {
     pub target: String,
     pub awake: bool,
     pub launched_spotify: bool,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FireTvApp {
+    pub package_name: String,
+    pub display_name: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FireTvAppCache {
+    pub scanned_at_epoch_ms: u64,
+    pub apps: Vec<FireTvApp>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FireTvAppScanResult {
+    pub target: String,
+    pub scanned_at_epoch_ms: u64,
+    pub apps: Vec<FireTvApp>,
     pub summary: String,
 }
 
@@ -160,6 +182,91 @@ pub fn prepare_spotify_session(ip: &str) -> Result<FireTvPrepResult> {
         launched_spotify: true,
         summary: format!("Connected to {target}, confirmed the screen is awake, and launched Spotify"),
     })
+}
+
+pub fn get_cached_apps() -> Result<FireTvAppCache> {
+    let path = apps_cache_path()?;
+    if !path.exists() {
+        return Ok(FireTvAppCache {
+            scanned_at_epoch_ms: 0,
+            apps: Vec::new(),
+        });
+    }
+
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read Fire TV app cache at {}", path.display()))?;
+    let cache = serde_json::from_str::<FireTvAppCache>(&raw)
+        .with_context(|| format!("failed to parse Fire TV app cache at {}", path.display()))?;
+    Ok(cache)
+}
+
+pub fn scan_apps(ip: &str) -> Result<FireTvAppScanResult> {
+    let trimmed_ip = ip.trim();
+    if trimmed_ip.is_empty() {
+        bail!("Fire TV IP address is required");
+    }
+
+    ensure_adb_available()?;
+    let target = normalize_target(trimmed_ip);
+
+    if !connect(&target)? {
+        bail!("ADB could not establish a connection with {target}");
+    }
+
+    let output = run_adb(&["-s", &target, "shell", "cmd", "package", "list", "packages", "-3"])?;
+    let mut apps = output
+        .lines()
+        .filter_map(|line| line.strip_prefix("package:"))
+        .map(|package_name| FireTvApp {
+            package_name: package_name.trim().to_string(),
+            display_name: infer_display_name(package_name.trim()),
+            source: "adb-package-list".into(),
+        })
+        .collect::<Vec<_>>();
+
+    apps.sort_by(|left, right| left.display_name.cmp(&right.display_name));
+    apps.dedup_by(|left, right| left.package_name == right.package_name);
+
+    let scanned_at_epoch_ms = current_epoch_ms()?;
+    let cache = FireTvAppCache {
+        scanned_at_epoch_ms,
+        apps: apps.clone(),
+    };
+    write_app_cache(&cache)?;
+
+    Ok(FireTvAppScanResult {
+        target: target.clone(),
+        scanned_at_epoch_ms,
+        summary: format!("Scanned {} launchable packages from {target}", apps.len()),
+        apps,
+    })
+}
+
+pub fn launch_app(ip: &str, package_name: &str) -> Result<String> {
+    let trimmed_ip = ip.trim();
+    if trimmed_ip.is_empty() {
+        bail!("Fire TV IP address is required");
+    }
+
+    let package_name = package_name.trim();
+    if package_name.is_empty() {
+        bail!("Package name is required");
+    }
+
+    ensure_adb_available()?;
+    let target = normalize_target(trimmed_ip);
+
+    if !connect(&target)? {
+        bail!("ADB could not establish a connection with {target}");
+    }
+
+    let awake = ensure_awake(&target, 4)?;
+    if !awake {
+        bail!("Fire TV at {target} did not wake after retries");
+    }
+
+    run_adb(&["-s", &target, "shell", "monkey", "-p", package_name, "1"])?;
+    Ok(format!("Launched {package_name} on {target}"))
 }
 
 fn adb_available() -> bool {
@@ -297,4 +404,54 @@ fn run_adb(args: &[&str]) -> Result<String> {
     }
 
     bail!("adb exited with status {}", output.status);
+}
+
+fn infer_display_name(package_name: &str) -> String {
+    package_name
+        .split('.')
+        .last()
+        .unwrap_or(package_name)
+        .split(['_', '-'])
+        .filter(|part| !part.is_empty())
+        .map(title_case)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn title_case(value: &str) -> String {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+
+    format!(
+        "{}{}",
+        first.to_ascii_uppercase(),
+        chars.as_str().to_ascii_lowercase()
+    )
+}
+
+fn current_epoch_ms() -> Result<u64> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .context("system clock is before unix epoch")?
+        .as_millis() as u64)
+}
+
+fn apps_cache_path() -> Result<PathBuf> {
+    Ok(app_data_dir()?.join("firetv-apps.json"))
+}
+
+fn write_app_cache(cache: &FireTvAppCache) -> Result<()> {
+    let path = apps_cache_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create Fire TV app cache dir at {}", parent.display()))?;
+    }
+
+    let raw = serde_json::to_string_pretty(cache).context("failed to serialize Fire TV app cache")?;
+    fs::write(&path, raw)
+        .with_context(|| format!("failed to write Fire TV app cache at {}", path.display()))?;
+
+    Ok(())
 }

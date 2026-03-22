@@ -1,7 +1,7 @@
 use desk_remote_core::{
     ActionResult, AuthUrlResult, SpotifyAuthDebug,
     config::{config_file_path, AppConfig},
-    firetv::{self, FireTvAction, FireTvStatus},
+    firetv::{self, FireTvAction, FireTvAppCache, FireTvAppScanResult, FireTvStatus},
     spotify::{self, SpotifyStatus},
     HealthStatus,
 };
@@ -47,6 +47,25 @@ pub fn firetv_status(firetv_ip: Option<String>) -> Result<FireTvStatus, String> 
 pub fn firetv_action(action: FireTvAction, firetv_ip: Option<String>) -> Result<ActionResult, String> {
     let ip = resolve_firetv_ip(firetv_ip)?;
     let message = firetv::perform_action(&ip, action).map_err(|e| e.to_string())?;
+
+    Ok(ActionResult { message })
+}
+
+#[command]
+pub fn firetv_cached_apps() -> Result<FireTvAppCache, String> {
+    firetv::get_cached_apps().map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn firetv_scan_apps(firetv_ip: Option<String>) -> Result<FireTvAppScanResult, String> {
+    let ip = resolve_firetv_ip(firetv_ip)?;
+    firetv::scan_apps(&ip).map_err(|e| e.to_string())
+}
+
+#[command]
+pub fn firetv_launch_app(package_name: String, firetv_ip: Option<String>) -> Result<ActionResult, String> {
+    let ip = resolve_firetv_ip(firetv_ip)?;
+    let message = firetv::launch_app(&ip, &package_name).map_err(|e| e.to_string())?;
 
     Ok(ActionResult { message })
 }

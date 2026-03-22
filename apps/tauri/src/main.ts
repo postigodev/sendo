@@ -27,6 +27,24 @@ type FireTvStatus = {
   summary: string;
 };
 
+type FireTvApp = {
+  package_name: string;
+  display_name: string;
+  source: string;
+};
+
+type FireTvAppCache = {
+  scanned_at_epoch_ms: number;
+  apps: FireTvApp[];
+};
+
+type FireTvAppScanResult = {
+  target: string;
+  scanned_at_epoch_ms: number;
+  apps: FireTvApp[];
+  summary: string;
+};
+
 type ActionResult = {
   message: string;
 };
@@ -80,11 +98,13 @@ const defaultConfig: AppConfig = {
 let currentConfig: AppConfig = { ...defaultConfig };
 let currentHealth: HealthStatus | null = null;
 let currentFireTvStatus: FireTvStatus | null = null;
+let currentFireTvApps: FireTvApp[] = [];
 let currentSpotifyStatus: SpotifyStatus | null = null;
 let spotifyAuthDebug: SpotifyAuthDebug | null = null;
 let spotifyAuthUrl = "";
 let spotifyCallbackInput = "";
 let spotifyAuthMode = "Auto callback in localhost";
+let fireTvAppFilter = "";
 let busy = false;
 let flashMessage = "";
 let flashIsError = false;
@@ -314,6 +334,39 @@ function render() {
         </section>
 
         <section class="panel">
+          <h2>Fire TV apps</h2>
+          <p class="hint">
+            Scan installed apps on the TV, cache them locally, and launch them from Desk Remote.
+          </p>
+
+          <div class="actions">
+            <button class="button-primary" id="firetv-scan-apps-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Scan Fire TV apps
+            </button>
+            <button class="button-secondary" id="firetv-load-apps-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Load cached apps
+            </button>
+          </div>
+
+          <label>
+            <span>Filter apps</span>
+            <input
+              id="firetv-app-filter"
+              placeholder="spotify, netflix, youtube..."
+              value="${escapeHtml(fireTvAppFilter)}"
+            />
+          </label>
+
+          ${
+            renderFireTvApps()
+          }
+        </section>
+
+        <section class="panel">
           <h2>Spotify TV control</h2>
           <p class="hint">
             Autentica Spotify, detecta el dispositivo TV por hints y ejecuta el
@@ -454,6 +507,22 @@ function render() {
       void refreshFireTvStatus("Fire TV status refreshed.");
     });
   document
+    .querySelector<HTMLButtonElement>("#firetv-scan-apps-button")
+    ?.addEventListener("click", () => {
+      void scanFireTvApps();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#firetv-load-apps-button")
+    ?.addEventListener("click", () => {
+      void loadCachedFireTvApps();
+    });
+  document
+    .querySelector<HTMLInputElement>("#firetv-app-filter")
+    ?.addEventListener("input", (event) => {
+      fireTvAppFilter = (event.currentTarget as HTMLInputElement).value;
+      render();
+    });
+  document
     .querySelector<HTMLButtonElement>("#spotify-status-button")
     ?.addEventListener("click", () => {
       void refreshSpotifyStatus("Spotify status refreshed.");
@@ -491,6 +560,14 @@ function render() {
       }
     });
   });
+  document.querySelectorAll<HTMLButtonElement>(".launch-app-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const packageName = button.dataset.packageName;
+      if (packageName) {
+        void launchFireTvApp(packageName);
+      }
+    });
+  });
 }
 
 function renderBadge(label: string, ready: boolean) {
@@ -507,6 +584,49 @@ function renderScreenState(screenAwake: boolean | null | undefined) {
     return "Asleep";
   }
   return "Unavailable";
+}
+
+function renderFireTvApps() {
+  const filter = fireTvAppFilter.trim().toLowerCase();
+  const apps = currentFireTvApps.filter((app) => {
+    if (!filter) {
+      return true;
+    }
+
+    return (
+      app.display_name.toLowerCase().includes(filter) ||
+      app.package_name.toLowerCase().includes(filter)
+    );
+  });
+
+  if (apps.length === 0) {
+    return `<p class="status-copy">No cached apps yet. Run a scan against the Fire TV to populate this list.</p>`;
+  }
+
+  return `
+    <div class="status-list remote-status">
+      ${apps
+        .map(
+          (app) => `
+            <article class="status-card app-card">
+              <div>
+                <h3>${escapeHtml(app.display_name)}</h3>
+                <p class="status-copy">${escapeHtml(app.package_name)}</p>
+              </div>
+              <button
+                class="button-secondary launch-app-button"
+                data-package-name="${escapeHtml(app.package_name)}"
+                type="button"
+                ${busy ? "disabled" : ""}
+              >
+                Launch
+              </button>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 async function onSave(event: SubmitEvent) {
@@ -552,6 +672,8 @@ async function loadAll(message = "Configuration loaded.") {
     });
     currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
     spotifyAuthDebug = await invoke<SpotifyAuthDebug>("spotify_debug_auth_flow");
+    const appCache = await invoke<FireTvAppCache>("firetv_cached_apps");
+    currentFireTvApps = appCache.apps;
     spotifyAuthUrl = currentSpotifyStatus.auth_url ?? "";
     busy = false;
     flash(message);
@@ -589,6 +711,48 @@ async function refreshFireTvStatus(message = "Fire TV status refreshed.") {
     currentHealth = await invoke<HealthStatus>("health_check");
     busy = false;
     flash(message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function loadCachedFireTvApps() {
+  busy = true;
+  flash("Loading cached Fire TV apps...");
+  render();
+
+  try {
+    const cache = await invoke<FireTvAppCache>("firetv_cached_apps");
+    currentFireTvApps = cache.apps;
+    busy = false;
+    flash(`Loaded ${cache.apps.length} cached Fire TV apps.`);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function scanFireTvApps() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Scanning Fire TV apps...");
+  render();
+
+  try {
+    const result = await invoke<FireTvAppScanResult>("firetv_scan_apps", {
+      firetvIp: currentConfig.firetv_ip,
+    });
+    currentFireTvApps = result.apps;
+    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
+      firetvIp: currentConfig.firetv_ip,
+    });
+    busy = false;
+    flash(result.summary);
     render();
   } catch (error) {
     busy = false;
@@ -731,6 +895,30 @@ async function startSpotifyOnTv() {
     });
     currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
     currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    flash(result.message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function launchFireTvApp(packageName: string) {
+  syncConfigFromInputs();
+  busy = true;
+  flash(`Launching ${packageName}...`);
+  render();
+
+  try {
+    const result = await invoke<ActionResult>("firetv_launch_app", {
+      packageName,
+      firetvIp: currentConfig.firetv_ip,
+    });
+    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
+      firetvIp: currentConfig.firetv_ip,
+    });
     busy = false;
     flash(result.message);
     render();

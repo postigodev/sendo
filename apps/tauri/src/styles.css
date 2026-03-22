@@ -197,6 +197,13 @@ button:disabled {
   margin: 0 0 8px;
 }
 
+.app-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
 .flash {
   min-height: 24px;
   color: #d6e8da;
