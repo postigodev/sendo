@@ -147,19 +147,23 @@ function render() {
   document.body.innerHTML = `
     <main class="desk-shell">
       <aside class="sidebar">
-        <div class="sidebar-brand">
-          <div class="brand-mark">DR</div>
-          <div><strong>Desk Remote</strong><p>Media control utility</p></div>
+        <div class="sidebar-top">
+          <div class="sidebar-brand">
+            <div class="brand-mark">DR</div>
+            <div><strong>Desk Remote</strong><p>Media control utility</p></div>
+          </div>
+          <div class="sidebar-health-stack">
+            <div class="sidebar-status ${currentFireTvStatus?.connected ? "is-good" : ""}">${currentFireTvStatus?.connected ? "Fire TV connected" : "Fire TV not connected"}</div>
+            <div class="sidebar-status ${currentSpotifyStatus?.authenticated ? "is-good" : ""}">${currentSpotifyStatus?.authenticated ? "Spotify ready" : "Spotify auth needed"}</div>
+          </div>
+          <nav class="sidebar-nav">
+            ${navButton("home", "Inicio", "house")}
+            ${navGroup("playback", "Reproduccion", [["spotify", "Spotify", "music-4"], ["quick-access", "Acceso rapido", "sparkles"], ["hotkeys", "Hotkeys", "keyboard"]])}
+            ${navGroup("firetv", "Fire TV", [["firetv-device", "ADB y dispositivo", "tv"], ["apps", "Apps", "grid-2x2"], ["remote", "Remote", "gamepad-2"]])}
+            ${navGroup("system", "Sistema", [["health", "Health", "activity"], ["general", "General", "settings-2"]])}
+          </nav>
         </div>
-        <nav class="sidebar-nav">
-          ${navButton("home", "Inicio", "house")}
-          ${navGroup("playback", "Reproduccion", [["spotify", "Spotify", "music-4"], ["quick-access", "Acceso rapido", "sparkles"], ["hotkeys", "Hotkeys", "keyboard"]])}
-          ${navGroup("firetv", "Fire TV", [["firetv-device", "ADB y dispositivo", "tv"], ["apps", "Apps", "grid-2x2"], ["remote", "Remote", "gamepad-2"]])}
-          ${navGroup("system", "Sistema", [["health", "Health", "activity"], ["general", "General", "settings-2"]])}
-        </nav>
         <div class="sidebar-footer">
-          <div class="sidebar-status ${currentFireTvStatus?.connected ? "is-good" : ""}">${currentFireTvStatus?.connected ? "Fire TV connected" : "Fire TV not connected"}</div>
-          <div class="sidebar-status ${currentSpotifyStatus?.authenticated ? "is-good" : ""}">${currentSpotifyStatus?.authenticated ? "Spotify ready" : "Spotify auth needed"}</div>
           <p>v${escapeHtml(packageJson.version)}</p>
         </div>
       </aside>
@@ -505,7 +509,7 @@ function navButton(view: ViewId, label: string, iconName: string, child = false)
 
 function navGroup(id: string, label: string, items: Array<[ViewId, string, string]>) {
   const open = openGroups.has(id);
-  return `<section class="nav-group"><button class="nav-group-button" data-group="${id}" type="button"><span>${escapeHtml(label)}</span><span>${open ? "-" : "+"}</span></button>${open ? `<div class="nav-group-items">${items.map(([view, itemLabel, iconName]) => navButton(view, itemLabel, iconName, true)).join("")}</div>` : ""}</section>`;
+  return `<section class="nav-group"><button class="nav-group-button ${open ? "is-open" : ""}" data-group="${id}" type="button"><span>${escapeHtml(label)}</span><span class="nav-group-chevron">${icon("chevron-down")}</span></button>${open ? `<div class="nav-group-items">${items.map(([view, itemLabel, iconName]) => navButton(view, itemLabel, iconName, true)).join("")}</div>` : ""}</section>`;
 }
 
 function issuePopover(issues: Issue[]) {

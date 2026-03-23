@@ -58,18 +58,23 @@ select {
 .sidebar {
   border-right: 1px solid var(--border);
   background: #181a1a;
-  padding: 18px 14px;
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 20px;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.sidebar-top {
+  display: grid;
+  gap: 10px;
 }
 
 .sidebar-brand {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 8px 10px 16px;
+  padding: 4px 8px 10px;
 }
 
 .brand-mark {
@@ -115,7 +120,7 @@ select {
 
 .nav-group {
   display: grid;
-  gap: 8px;
+  gap: 4px;
 }
 
 .nav-link,
@@ -124,9 +129,9 @@ select {
   width: 100%;
   border: 0;
   background: transparent;
-  padding: 11px 12px;
+  padding: 9px 10px;
   text-align: left;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
 }
 
@@ -148,6 +153,19 @@ select {
   flex: 0 0 auto;
 }
 
+.nav-group-chevron {
+  color: var(--muted);
+  transition: transform 140ms ease;
+}
+
+.nav-group-button.is-open .nav-group-chevron {
+  transform: rotate(0deg);
+}
+
+.nav-group-button:not(.is-open) .nav-group-chevron {
+  transform: rotate(-90deg);
+}
+
 .quick-icon .ui-icon,
 .shortcut-icon .ui-icon {
   width: 18px;
@@ -158,6 +176,7 @@ select {
   display: flex;
   justify-content: space-between;
   color: var(--muted);
+  align-items: center;
 }
 
 .nav-link:hover,
@@ -171,25 +190,33 @@ select {
 .nav-link.is-active {
   background: rgba(154, 210, 165, 0.12);
   color: var(--text);
+  box-shadow: inset 2px 0 0 rgba(154, 210, 165, 0.65);
 }
 
 .nav-link.is-child {
-  padding-left: 24px;
+  padding-left: 22px;
 }
 
 .sidebar-footer {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
+  display: flex;
+  justify-content: flex-start;
+  padding: 2px 8px 0;
+  margin-top: auto;
 }
 
 .sidebar-status {
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   color: var(--muted);
 }
 
 .sidebar-status.is-good {
   color: var(--accent);
+}
+
+.sidebar-health-stack {
+  display: grid;
+  gap: 4px;
+  padding: 0 8px 6px;
 }
 
 .workspace {
