@@ -133,6 +133,7 @@ let newBindingLabel = "";
 let newBindingHotkey = "";
 let newBindingActionType = "start_spotify_on_tv";
 let newBindingActionValue = "";
+let isRecordingHotkey = false;
 let busy = false;
 let flashMessage = "";
 let flashIsError = false;
@@ -291,8 +292,20 @@ function render() {
             </label>
             <label>
               <span>Hotkey</span>
-              <input id="binding-hotkey" placeholder="Ctrl+Shift+S" value="${escapeHtml(newBindingHotkey)}" />
+              <div class="input-with-button">
+                <input id="binding-hotkey" placeholder="Ctrl+Shift+S" value="${escapeHtml(newBindingHotkey)}" />
+                <button class="button-secondary" id="binding-record-hotkey-button" type="button" ${
+                  busy ? "disabled" : ""
+                }>
+                  ${isRecordingHotkey ? "Press keys..." : "Record hotkey"}
+                </button>
+              </div>
             </label>
+            <p class="meta">
+              ${isRecordingHotkey
+                ? "Recording hotkey. Press your combination now, Esc to cancel, or Backspace/Delete to clear."
+                : "Type it manually or use Record hotkey."}
+            </p>
             <label>
               <span>Action type</span>
               <input id="binding-action-type" placeholder="start_spotify_on_tv, spotify_toggle_tv, fire_tv_key, launch_app" value="${escapeHtml(newBindingActionType)}" />
@@ -617,6 +630,11 @@ function render() {
       void loadBindings("Bindings reloaded.");
     });
   document
+    .querySelector<HTMLButtonElement>("#binding-record-hotkey-button")
+    ?.addEventListener("click", () => {
+      toggleHotkeyRecording();
+    });
+  document
     .querySelector<HTMLButtonElement>("#spotify-status-button")
     ?.addEventListener("click", () => {
       void refreshSpotifyStatus("Spotify status refreshed.");
@@ -753,6 +771,119 @@ function describeBindingAction(action: BindingAction) {
     return `fire_tv_key(${action.fire_tv_key.action})`;
   }
   return "unknown";
+}
+
+function toggleHotkeyRecording() {
+  if (busy) {
+    return;
+  }
+
+  isRecordingHotkey = !isRecordingHotkey;
+  flash(
+    isRecordingHotkey
+      ? "Recording hotkey. Press your combination now."
+      : "Hotkey recording cancelled.",
+  );
+  render();
+}
+
+function handleHotkeyRecording(event: KeyboardEvent) {
+  if (!isRecordingHotkey || busy) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (event.key === "Escape") {
+    isRecordingHotkey = false;
+    flash("Hotkey recording cancelled.");
+    render();
+    return;
+  }
+
+  if (
+    (event.key === "Backspace" || event.key === "Delete") &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  ) {
+    newBindingHotkey = "";
+    isRecordingHotkey = false;
+    flash("Hotkey cleared.");
+    render();
+    return;
+  }
+
+  const hotkey = formatHotkey(event);
+  if (!hotkey) {
+    flash("Add at least one modifier and one key.");
+    render();
+    return;
+  }
+
+  newBindingHotkey = hotkey;
+  isRecordingHotkey = false;
+  flash(`Hotkey recorded: ${hotkey}`);
+  render();
+}
+
+function formatHotkey(event: KeyboardEvent) {
+  const mainKey = normalizeHotkeyKey(event.key);
+  if (!mainKey) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  if (event.ctrlKey) {
+    parts.push("Ctrl");
+  }
+  if (event.altKey) {
+    parts.push("Alt");
+  }
+  if (event.shiftKey) {
+    parts.push("Shift");
+  }
+  if (event.metaKey) {
+    parts.push("Super");
+  }
+
+  if (parts.length === 0) {
+    return "";
+  }
+
+  parts.push(mainKey);
+  return parts.join("+");
+}
+
+function normalizeHotkeyKey(key: string) {
+  if (["Control", "Shift", "Alt", "Meta"].includes(key)) {
+    return "";
+  }
+
+  if (key === " ") {
+    return "Space";
+  }
+
+  if (key === "ArrowUp") {
+    return "Up";
+  }
+  if (key === "ArrowDown") {
+    return "Down";
+  }
+  if (key === "ArrowLeft") {
+    return "Left";
+  }
+  if (key === "ArrowRight") {
+    return "Right";
+  }
+
+  if (key.length === 1) {
+    return key.toUpperCase();
+  }
+
+  return key;
 }
 
 async function syncGlobalHotkeys() {
@@ -1295,5 +1426,7 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+document.addEventListener("keydown", handleHotkeyRecording, true);
 
 void loadAll();

@@ -126,6 +126,13 @@ label {
   gap: 8px;
 }
 
+.input-with-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
 input {
   width: 100%;
   border: 1px solid rgba(190, 216, 197, 0.18);
