@@ -117,18 +117,6 @@ function renderHome() {
   return `
     <section class="home-grid">
       <section class="home-main">
-        <article class="panel hero-panel">
-          <div class="hero-top">
-            <div><p class="panel-kicker">Primary action</p><h2>Spotify on TV</h2><p>Wake the TV, open Spotify, and transfer playback.</p></div>
-            <span class="status-chip ${issues.length ? "is-warning" : "is-ready"}">${escapeHtml(issues.length ? issues[0].title : "Ready to start Spotify on TV")}</span>
-          </div>
-          <div class="hero-actions">
-            <button class="button-primary is-large" id="start-spotify-on-tv-button" type="button" ${busy ? "disabled" : ""}>Start Spotify on TV</button>
-            <button class="button-secondary quick-action-button" data-quick-action="wake" type="button" ${busy ? "disabled" : ""}>Wake TV</button>
-            <button class="button-secondary quick-action-button" data-quick-action="launch_spotify" type="button" ${busy ? "disabled" : ""}>Open Spotify</button>
-            <button class="button-secondary quick-action-button" data-quick-action="spotify_toggle_tv" type="button" ${busy ? "disabled" : ""}>Toggle playback</button>
-          </div>
-        </article>
         <article class="panel">
           <div class="panel-header"><div><p class="panel-kicker">Favorites</p><h2>Quick Access</h2></div><button class="link-button" data-view="quick-access" type="button">Manage</button></div>
           ${
@@ -155,6 +143,22 @@ function renderHome() {
         </article>
       </section>
       <aside class="home-side">
+        <button class="panel hero-panel action-tile" id="start-spotify-on-tv-button" type="button" ${busy ? "disabled" : ""}>
+          <div class="hero-top">
+            <div>
+              <p class="panel-kicker">Main flow</p>
+              <h2>Spotify on TV</h2>
+            </div>
+            <span class="status-chip ${issues.length ? "is-warning" : "is-ready"}">${escapeHtml(issues.length ? issues[0].title : "Ready")}</span>
+          </div>
+          <div class="action-tile-body">
+            <span class="action-tile-icon">${icon("music-4")}</span>
+            <div class="action-tile-copy">
+              <strong>Start Spotify on TV</strong>
+              <p>Wake the TV, launch Spotify, and transfer playback.</p>
+            </div>
+          </div>
+        </button>
         <article class="panel utility-panel">
           <div class="panel-header"><div><p class="panel-kicker">Readiness</p><h2>System status</h2></div></div>
           <div class="readiness-list">${readinessRows().map((row) => `<article class="readiness-row ${row.tone}"><div><h3>${escapeHtml(row.label)}</h3><p>${escapeHtml(row.detail)}</p></div>${row.view ? `<button class="link-button" data-view="${row.view}" type="button">${escapeHtml(row.actionLabel)}</button>` : ""}</article>`).join("")}</div>

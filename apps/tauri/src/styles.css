@@ -404,6 +404,72 @@ select {
   min-width: 240px;
 }
 
+.action-tile {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    transform 120ms ease,
+    box-shadow 140ms ease;
+}
+
+.action-tile:hover {
+  border-color: rgba(154, 210, 165, 0.32);
+  background: linear-gradient(180deg, #252b28 0%, #1f2422 100%);
+}
+
+.action-tile:active {
+  transform: translateY(1px);
+}
+
+.action-tile:disabled {
+  cursor: default;
+  opacity: 0.78;
+}
+
+.action-tile-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.action-tile-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(154, 210, 165, 0.12);
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.action-tile-icon .ui-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.action-tile-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.action-tile-copy strong {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.action-tile-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .button-secondary,
 .quick-tile {
   background: var(--bg-3);
