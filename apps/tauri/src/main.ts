@@ -57,10 +57,10 @@ function render() {
             <div><strong>Desk Remote</strong><p>Media control utility</p></div>
           </div>
           <nav class="sidebar-nav">
-            ${navButton("home", "Inicio", "house")}
-            ${navGroup("playback", "Reproduccion", [["spotify", "Spotify", "music-4"], ["quick-access", "Acceso rapido", "sparkles"], ["hotkeys", "Hotkeys", "keyboard"]])}
-            ${navGroup("firetv", "Fire TV", [["firetv-device", "ADB y dispositivo", "tv"], ["apps", "Apps", "grid-2x2"], ["remote", "Remote", "gamepad-2"]])}
-            ${navGroup("system", "Sistema", [["health", "Health", "activity"], ["general", "General", "settings-2"]])}
+            ${navButton("home", "Home", "house")}
+            ${navGroup("playback", "Playback", [["spotify", "Spotify", "music-4"], ["quick-access", "Quick Access", "sparkles"], ["hotkeys", "Hotkeys", "keyboard"]])}
+            ${navGroup("firetv", "Fire TV", [["firetv-device", "ADB & Device", "tv"], ["apps", "Apps", "grid-2x2"], ["remote", "Remote", "gamepad-2"]])}
+            ${navGroup("system", "System", [["health", "Health", "activity"], ["general", "General", "settings-2"]])}
           </nav>
         </div>
         <div class="sidebar-footer">
@@ -130,7 +130,7 @@ function renderHome() {
           </div>
         </article>
         <article class="panel">
-          <div class="panel-header"><div><p class="panel-kicker">Favorites</p><h2>Acceso rapido</h2></div><button class="link-button" data-view="quick-access" type="button">Manage</button></div>
+          <div class="panel-header"><div><p class="panel-kicker">Favorites</p><h2>Quick Access</h2></div><button class="link-button" data-view="quick-access" type="button">Manage</button></div>
           ${
             favorites.length
               ? `<div class="quick-grid">${favorites.map((binding) => `<button class="quick-tile execute-binding-button" data-binding-id="${escapeHtml(binding.id)}" data-tooltip="${escapeHtml(describeBindingAction(binding.action))}" type="button" ${busy ? "disabled" : ""}><span class="quick-icon">${icon(bindingIcon(binding.action))}</span><span>${escapeHtml(binding.label)}</span></button>`).join("")}</div>`
@@ -138,7 +138,7 @@ function renderHome() {
           }
         </article>
         <article class="panel">
-          <div class="panel-header"><div><p class="panel-kicker">Keyboard</p><h2>Accesos directos</h2></div><button class="link-button" data-view="hotkeys" type="button">Manage hotkeys</button></div>
+          <div class="panel-header"><div><p class="panel-kicker">Keyboard</p><h2>Shortcuts</h2></div><button class="link-button" data-view="hotkeys" type="button">Manage hotkeys</button></div>
           ${
             hotkeys.length
               ? `<div class="shortcut-list">${hotkeys.map((binding) => `<article class="shortcut-row"><div class="shortcut-copy"><span class="shortcut-icon">${icon(bindingIcon(binding.action))}</span><div><h3>${escapeHtml(binding.label)}</h3><p>${escapeHtml(describeBindingAction(binding.action))}</p></div></div><kbd>${escapeHtml(binding.hotkey)}</kbd></article>`).join("")}</div>`
@@ -146,7 +146,7 @@ function renderHome() {
           }
         </article>
         <article class="panel">
-          <div class="panel-header"><div><p class="panel-kicker">Recent</p><h2>Actividad reciente</h2></div></div>
+          <div class="panel-header"><div><p class="panel-kicker">Recent</p><h2>Recent activity</h2></div></div>
           ${
             recentActivity.length
               ? `<div class="activity-list">${recentActivity.map((item) => `<article class="activity-item ${item.tone}"><div><h3>${escapeHtml(item.text)}</h3><p>${escapeHtml(timeAgo(item.at))}</p></div></article>`).join("")}</div>`
@@ -156,7 +156,7 @@ function renderHome() {
       </section>
       <aside class="home-side">
         <article class="panel utility-panel">
-          <div class="panel-header"><div><p class="panel-kicker">Readiness</p><h2>Estado del sistema</h2></div></div>
+          <div class="panel-header"><div><p class="panel-kicker">Readiness</p><h2>System status</h2></div></div>
           <div class="readiness-list">${readinessRows().map((row) => `<article class="readiness-row ${row.tone}"><div><h3>${escapeHtml(row.label)}</h3><p>${escapeHtml(row.detail)}</p></div>${row.view ? `<button class="link-button" data-view="${row.view}" type="button">${escapeHtml(row.actionLabel)}</button>` : ""}</article>`).join("")}</div>
         </article>
         <article class="panel utility-panel">
@@ -171,7 +171,7 @@ function renderHome() {
           </div>
         </article>
         <article class="panel utility-panel">
-          <div class="panel-header"><div><p class="panel-kicker">Tools</p><h2>Herramientas rapidas</h2></div></div>
+          <div class="panel-header"><div><p class="panel-kicker">Tools</p><h2>Quick tools</h2></div></div>
           <div class="tool-list">
             <button class="tool-row" data-view="apps" type="button">Open Apps</button>
             <button class="tool-row" data-view="remote" type="button">Open Remote</button>
@@ -483,19 +483,19 @@ function screenLabel(value: boolean | null | undefined) {
 }
 
 function sectionLabel(view: ViewId) {
-  if (["spotify", "quick-access", "hotkeys"].includes(view)) return "Reproduccion";
+  if (["spotify", "quick-access", "hotkeys"].includes(view)) return "Playback";
   if (["firetv-device", "apps", "remote"].includes(view)) return "Fire TV";
-  if (["health", "general"].includes(view)) return "Sistema";
+  if (["health", "general"].includes(view)) return "System";
   return "Dashboard";
 }
 
 function titleForView(view: ViewId) {
   const map: Record<ViewId, string> = {
-    home: "Inicio",
+    home: "Home",
     spotify: "Spotify",
-    "quick-access": "Acceso rapido",
+    "quick-access": "Quick Access",
     hotkeys: "Hotkeys",
-    "firetv-device": "ADB y dispositivo",
+    "firetv-device": "ADB & Device",
     apps: "Apps",
     remote: "Remote",
     health: "Health",
