@@ -67,14 +67,14 @@ select {
 
 .sidebar-top {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .sidebar-brand {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 4px 8px 10px;
+  padding: 4px 8px 8px;
 }
 
 .brand-mark {
@@ -104,6 +104,18 @@ select {
   color: var(--muted);
 }
 
+.sidebar-brand strong {
+  display: block;
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sidebar-brand p {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+}
+
 .sidebar-nav,
 .nav-group-items,
 .tool-list,
@@ -118,9 +130,21 @@ select {
   gap: 8px;
 }
 
+.sidebar-nav {
+  gap: 2px;
+}
+
 .nav-group {
   display: grid;
   gap: 4px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.nav-group:first-of-type {
+  padding-top: 6px;
+  margin-top: 2px;
 }
 
 .nav-link,
@@ -133,6 +157,11 @@ select {
   text-align: left;
   border-radius: 8px;
   cursor: pointer;
+}
+
+.nav-link {
+  font-size: 0.95rem;
+  font-weight: 500;
 }
 
 .nav-link-copy,
@@ -156,6 +185,8 @@ select {
 .nav-group-chevron {
   color: var(--muted);
   transition: transform 140ms ease;
+  width: 14px;
+  height: 14px;
 }
 
 .nav-group-button.is-open .nav-group-chevron {
@@ -177,6 +208,12 @@ select {
   justify-content: space-between;
   color: var(--muted);
   align-items: center;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
 }
 
 .nav-link:hover,
@@ -194,7 +231,9 @@ select {
 }
 
 .nav-link.is-child {
-  padding-left: 22px;
+  padding-left: 26px;
+  font-size: 0.91rem;
+  font-weight: 500;
 }
 
 .sidebar-footer {
@@ -202,21 +241,6 @@ select {
   justify-content: flex-start;
   padding: 2px 8px 0;
   margin-top: auto;
-}
-
-.sidebar-status {
-  font-size: 0.84rem;
-  color: var(--muted);
-}
-
-.sidebar-status.is-good {
-  color: var(--accent);
-}
-
-.sidebar-health-stack {
-  display: grid;
-  gap: 4px;
-  padding: 0 8px 6px;
 }
 
 .workspace {

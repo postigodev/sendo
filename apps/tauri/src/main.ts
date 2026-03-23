@@ -152,10 +152,6 @@ function render() {
             <div class="brand-mark">DR</div>
             <div><strong>Desk Remote</strong><p>Media control utility</p></div>
           </div>
-          <div class="sidebar-health-stack">
-            <div class="sidebar-status ${currentFireTvStatus?.connected ? "is-good" : ""}">${currentFireTvStatus?.connected ? "Fire TV connected" : "Fire TV not connected"}</div>
-            <div class="sidebar-status ${currentSpotifyStatus?.authenticated ? "is-good" : ""}">${currentSpotifyStatus?.authenticated ? "Spotify ready" : "Spotify auth needed"}</div>
-          </div>
           <nav class="sidebar-nav">
             ${navButton("home", "Inicio", "house")}
             ${navGroup("playback", "Reproduccion", [["spotify", "Spotify", "music-4"], ["quick-access", "Acceso rapido", "sparkles"], ["hotkeys", "Hotkeys", "keyboard"]])}
