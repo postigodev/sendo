@@ -319,7 +319,7 @@ function render() {
                 ? `
                   <label>
                     <span>${escapeHtml(bindingActionValueLabel(newBindingActionType))}</span>
-                    <input id="binding-action-value" placeholder="${escapeHtml(bindingActionValuePlaceholder(newBindingActionType))}" value="${escapeHtml(newBindingActionValue)}" />
+                    ${renderBindingActionValueControl()}
                   </label>
                 `
                 : ""
@@ -655,7 +655,11 @@ function render() {
     .querySelector<HTMLSelectElement>("#binding-action-type")
     ?.addEventListener("change", (event) => {
       newBindingActionType = (event.currentTarget as HTMLSelectElement).value;
-      if (!bindingActionRequiresValue(newBindingActionType)) {
+      if (newBindingActionType === "fire_tv_key") {
+        newBindingActionValue = "home";
+      } else if (newBindingActionType === "launch_app") {
+        newBindingActionValue = currentFireTvApps[0]?.package_name ?? "";
+      } else {
         newBindingActionValue = "";
       }
       render();
@@ -829,6 +833,69 @@ function bindingActionValuePlaceholder(actionType: string) {
   return "";
 }
 
+function renderBindingActionValueControl() {
+  if (newBindingActionType === "fire_tv_key") {
+    return `
+      <select id="binding-action-value">
+        ${renderFireTvActionOptions()}
+      </select>
+    `;
+  }
+
+  if (newBindingActionType === "launch_app") {
+    return `
+      <select id="binding-action-value">
+        ${renderFireTvAppOptions()}
+      </select>
+    `;
+  }
+
+  return `<input id="binding-action-value" placeholder="${escapeHtml(bindingActionValuePlaceholder(newBindingActionType))}" value="${escapeHtml(newBindingActionValue)}" />`;
+}
+
+function renderFireTvActionOptions() {
+  const options: Array<[FireTvAction, string]> = [
+    ["connect", "Connect"],
+    ["ensure_awake", "Ensure awake"],
+    ["launch_spotify", "Launch Spotify"],
+    ["wake", "Wake"],
+    ["home", "Home"],
+    ["back", "Back"],
+    ["up", "Up"],
+    ["down", "Down"],
+    ["left", "Left"],
+    ["right", "Right"],
+    ["select", "Select"],
+    ["play_pause", "Play/Pause"],
+  ];
+
+  return options
+    .map(([value, label]) => {
+      const selected = newBindingActionValue === value ? "selected" : "";
+      return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+}
+
+function renderFireTvAppOptions() {
+  if (currentFireTvApps.length === 0) {
+    return `<option value="">No cached apps yet</option>`;
+  }
+
+  const options = currentFireTvApps
+    .slice()
+    .sort((left, right) => left.display_name.localeCompare(right.display_name))
+    .map((app) => {
+      const selected = newBindingActionValue === app.package_name ? "selected" : "";
+      return `<option value="${escapeHtml(app.package_name)}" ${selected}>${escapeHtml(app.display_name)} · ${escapeHtml(app.package_name)}</option>`;
+    });
+
+  return [
+    `<option value="" ${newBindingActionValue ? "" : "selected"}>Choose cached app</option>`,
+    ...options,
+  ].join("");
+}
+
 function describeBindingAction(action: BindingAction) {
   if (action === "spotify_toggle_tv") {
     return "spotify_toggle_tv";
@@ -876,6 +943,16 @@ function resetBindingFormState() {
   newBindingActionType = "start_spotify_on_tv";
   newBindingActionValue = "";
   isRecordingHotkey = false;
+}
+
+function normalizeBindingDefaults() {
+  if (newBindingActionType === "fire_tv_key" && !newBindingActionValue) {
+    newBindingActionValue = "home";
+  }
+
+  if (newBindingActionType === "launch_app" && !newBindingActionValue) {
+    newBindingActionValue = currentFireTvApps[0]?.package_name ?? "";
+  }
 }
 
 function bindingActionTypeFromBinding(action: BindingAction) {
@@ -1507,6 +1584,7 @@ function syncConfigFromInputs() {
 }
 
 function syncBindingInputs() {
+  normalizeBindingDefaults();
   newBindingLabel =
     document.querySelector<HTMLInputElement>("#binding-label")?.value.trim() ?? newBindingLabel;
   newBindingHotkey =
@@ -1520,6 +1598,7 @@ function syncBindingInputs() {
 }
 
 function buildBindingPayload(): Binding {
+  normalizeBindingDefaults();
   const actionType = newBindingActionType.trim();
   let action: BindingAction;
 
