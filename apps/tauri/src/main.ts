@@ -50,6 +50,9 @@ let {
   quickAccessPointerStartY,
   quickAccessDragging,
   suppressQuickTileClick,
+  sidebarIndicatorTop,
+  sidebarIndicatorLeft,
+  sidebarIndicatorVisible,
   recentActivity,
 } = appState;
 
@@ -64,6 +67,7 @@ function render() {
             <div><strong>Desk Remote</strong><p>Media control utility</p></div>
           </div>
           <nav class="sidebar-nav">
+            <span class="nav-active-indicator" aria-hidden="true" style="top:${sidebarIndicatorTop}px;left:${sidebarIndicatorLeft}px;opacity:${sidebarIndicatorVisible ? "1" : "0"};"></span>
             ${navButton("home", "Home", "house")}
             ${navGroup("playback", "Playback", [["spotify", "Spotify", "music-4"], ["quick-access", "Quick Access", "sparkles"], ["hotkeys", "Hotkeys", "keyboard"]])}
             ${navGroup("firetv", "Fire TV", [["firetv-device", "ADB & Device", "tv"], ["apps", "Apps", "grid-2x2"], ["remote", "Remote", "gamepad-2"]])}
@@ -92,6 +96,7 @@ function render() {
   `;
   renderIcons();
   bindEvents();
+  syncSidebarIndicator();
 }
 
 function renderView() {
@@ -839,6 +844,29 @@ function bindEvents() {
   );
 }
 
+function syncSidebarIndicator() {
+  const nav = document.querySelector<HTMLElement>(".sidebar-nav");
+  const indicator = document.querySelector<HTMLElement>(".nav-active-indicator");
+  const activeLink = document.querySelector<HTMLElement>(".sidebar-nav .nav-link.is-active");
+  if (!nav || !indicator || !activeLink) return;
+
+  const indicatorHeight = 16;
+  const top = activeLink.offsetTop + (activeLink.offsetHeight - indicatorHeight) / 2;
+  const left = activeLink.classList.contains("is-child") ? 20 : 12;
+  indicator.style.top = `${sidebarIndicatorTop}px`;
+  indicator.style.left = `${sidebarIndicatorLeft}px`;
+  indicator.style.opacity = sidebarIndicatorVisible ? "1" : "0";
+  requestAnimationFrame(() => {
+    indicator.style.top = `${top}px`;
+    indicator.style.left = `${left}px`;
+    indicator.style.opacity = "1";
+  });
+  sidebarIndicatorTop = top;
+  sidebarIndicatorLeft = left;
+  sidebarIndicatorVisible = true;
+  indicator.style.height = `${indicatorHeight}px`;
+}
+
 async function syncGlobalHotkeys() {
   const warnings: string[] = [];
   const desiredHotkeys = Array.from(
@@ -1436,5 +1464,6 @@ async function reorderFavoriteBindings(sourceId: string, targetId: string) {
 document.addEventListener("keydown", handleHotkeyRecording, true);
 document.addEventListener("pointermove", handleQuickAccessPointerMove, true);
 document.addEventListener("pointerup", handleQuickAccessPointerUp, true);
+window.addEventListener("resize", syncSidebarIndicator);
 
 void loadAll();

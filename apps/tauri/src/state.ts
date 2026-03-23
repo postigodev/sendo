@@ -51,5 +51,8 @@ export const appState = {
   quickAccessPointerStartY: 0,
   quickAccessDragging: false,
   suppressQuickTileClick: false,
+  sidebarIndicatorTop: 0,
+  sidebarIndicatorLeft: 12,
+  sidebarIndicatorVisible: false,
   recentActivity: [] as Activity[],
 };
