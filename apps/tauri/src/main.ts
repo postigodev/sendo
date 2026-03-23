@@ -1,146 +1,50 @@
-import { invoke } from "@tauri-apps/api/core";
 import {
   isRegistered as isGlobalShortcutRegistered,
   register as registerGlobalShortcut,
   unregister as unregisterGlobalShortcut,
 } from "@tauri-apps/plugin-global-shortcut";
-import { createIcons, icons } from "lucide";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import packageJson from "../package.json";
+import { api } from "./api";
+import { icon, renderIcons } from "./icons";
+import { appState } from "./state";
+import type {
+  Activity,
+  Binding,
+  BindingAction,
+  FireTvAction,
+  Issue,
+  ViewId,
+} from "./types";
+import { asMessage, escapeHtml, timeAgo } from "./utils";
 
-type AppConfig = {
-  firetv_ip: string;
-  spotify_client_id: string;
-  spotify_client_secret: string;
-  spotify_redirect_url: string;
-  spotify_target_hints: string;
-  spotify_auth_state: string;
-};
-type HealthStatus = {
-  config_path: string;
-  firetv_configured: boolean;
-  spotify_configured: boolean;
-  firetv_summary: string;
-  spotify_summary: string;
-};
-type FireTvStatus = {
-  configured: boolean;
-  adb_available: boolean;
-  connected: boolean;
-  screen_awake: boolean | null;
-  target: string | null;
-  summary: string;
-};
-type FireTvApp = { package_name: string; display_name: string; source: string };
-type FireTvAppCache = { scanned_at_epoch_ms: number; apps: FireTvApp[] };
-type FireTvAppScanResult = {
-  target: string;
-  scanned_at_epoch_ms: number;
-  apps: FireTvApp[];
-  summary: string;
-};
-type ActionResult = { message: string };
-type AuthUrlResult = { url: string; message: string };
-type SpotifyStatus = {
-  configured: boolean;
-  authenticated: boolean;
-  target_found: boolean;
-  target_name: string | null;
-  summary: string;
-  auth_url: string | null;
-  token_cache_path: string;
-};
-type SpotifyAuthDebug = {
-  stage: string;
-  detail: string;
-  state: string;
-  redirect_uri: string;
-  token_cache_path: string;
-};
-type FireTvAction =
-  | "connect"
-  | "ensure_awake"
-  | "launch_spotify"
-  | "wake"
-  | "home"
-  | "back"
-  | "up"
-  | "down"
-  | "left"
-  | "right"
-  | "select"
-  | "play_pause";
-type BindingAction =
-  | { launch_app: { package_name: string } }
-  | { fire_tv_key: { action: FireTvAction } }
-  | "spotify_toggle_tv"
-  | "start_spotify_on_tv";
-type Binding = {
-  id: string;
-  label: string;
-  hotkey: string;
-  favorite: boolean;
-  action: BindingAction;
-};
-type BindingStore = { bindings: Binding[] };
-type ViewId =
-  | "home"
-  | "spotify"
-  | "quick-access"
-  | "hotkeys"
-  | "firetv-device"
-  | "apps"
-  | "remote"
-  | "health"
-  | "general";
-type Issue = {
-  title: string;
-  detail: string;
-  view: ViewId;
-  actionLabel: string;
-  tone: "warning" | "error";
-};
-type Activity = {
-  id: string;
-  text: string;
-  tone: "info" | "success" | "warning" | "error";
-  at: number;
-};
-
-const defaultConfig: AppConfig = {
-  firetv_ip: "",
-  spotify_client_id: "",
-  spotify_client_secret: "",
-  spotify_redirect_url: "",
-  spotify_target_hints: "fire, tv, amazon, spotify, insignia, toshiba, osint",
-  spotify_auth_state: "",
-};
-
-let currentConfig: AppConfig = { ...defaultConfig };
-let currentHealth: HealthStatus | null = null;
-let currentFireTvStatus: FireTvStatus | null = null;
-let currentSpotifyStatus: SpotifyStatus | null = null;
-let currentSpotifyDebug: SpotifyAuthDebug | null = null;
-let currentFireTvApps: FireTvApp[] = [];
-let currentBindings: Binding[] = [];
-let registeredHotkeys: string[] = [];
-let currentView: ViewId = "home";
-let openGroups = new Set(["playback", "firetv", "system"]);
-let issuesOpen = false;
-let busy = false;
-let flashMessage = "";
-let flashIsError = false;
-let fireTvAppFilter = "";
-let spotifyAuthUrl = "";
-let spotifyCallbackInput = "";
-let editingBindingId = "";
-let newBindingLabel = "";
-let newBindingHotkey = "";
-let newBindingFavorite = false;
-let newBindingActionType = "start_spotify_on_tv";
-let newBindingActionValue = "";
-let isRecordingHotkey = false;
-let recentActivity: Activity[] = [];
+let {
+  currentConfig,
+  currentHealth,
+  currentFireTvStatus,
+  currentSpotifyStatus,
+  currentSpotifyDebug,
+  currentFireTvApps,
+  currentBindings,
+  registeredHotkeys,
+  currentView,
+  openGroups,
+  issuesOpen,
+  busy,
+  flashMessage,
+  flashIsError,
+  fireTvAppFilter,
+  spotifyAuthUrl,
+  spotifyCallbackInput,
+  editingBindingId,
+  newBindingLabel,
+  newBindingHotkey,
+  newBindingFavorite,
+  newBindingActionType,
+  newBindingActionValue,
+  isRecordingHotkey,
+  recentActivity,
+} = appState;
 
 function render() {
   const issues = deriveIssues();
@@ -179,7 +83,7 @@ function render() {
       </section>
     </main>
   `;
-  createIcons({ icons });
+  renderIcons();
   bindEvents();
 }
 
@@ -578,13 +482,6 @@ function screenLabel(value: boolean | null | undefined) {
   return value === true ? "Awake" : value === false ? "Asleep" : "Unavailable";
 }
 
-function timeAgo(at: number) {
-  const seconds = Math.max(1, Math.floor((Date.now() - at) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  return `${Math.floor(seconds / 3600)}h ago`;
-}
-
 function sectionLabel(view: ViewId) {
   if (["spotify", "quick-access", "hotkeys"].includes(view)) return "Reproduccion";
   if (["firetv-device", "apps", "remote"].includes(view)) return "Fire TV";
@@ -641,10 +538,6 @@ function bindingIcon(action: BindingAction) {
   if (action === "spotify_toggle_tv" || action === "start_spotify_on_tv") return "music-4";
   if (typeof action === "object" && "launch_app" in action) return "app-window";
   return "tv";
-}
-
-function icon(name: string) {
-  return `<span class="ui-icon" data-lucide="${escapeHtml(name)}"></span>`;
 }
 
 function describeBindingAction(action: BindingAction) {
@@ -922,7 +815,7 @@ async function saveBinding() {
   flash("Saving binding...");
   render();
   try {
-    const store = await invoke<BindingStore>("bindings_save", { binding: buildBindingPayload() });
+    const store = await api.bindingsSave(buildBindingPayload());
     currentBindings = store.bindings;
     const hotkeyMessage = await syncGlobalHotkeys();
     addActivity(`${editingBindingId ? "Updated" : "Created"} binding: ${newBindingLabel}`, "success");
@@ -945,7 +838,7 @@ async function toggleBindingFavorite(id: string, favorite: boolean) {
   flash("Updating Quick Access...");
   render();
   try {
-    const store = await invoke<BindingStore>("bindings_save", { binding: { ...binding, favorite } });
+    const store = await api.bindingsSave({ ...binding, favorite });
     currentBindings = store.bindings;
     busy = false;
     flash(favorite ? "Pinned to Quick Access." : "Removed from Quick Access.");
@@ -963,9 +856,9 @@ async function executeBinding(id: string) {
   flash("Running binding...");
   render();
   try {
-    const result = await invoke<ActionResult>("bindings_execute", { id });
-    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", { firetvIp: currentConfig.firetv_ip });
-    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    const result = await api.bindingsExecute(id);
+    currentFireTvStatus = await api.fireTvStatus(currentConfig.firetv_ip);
+    currentSpotifyStatus = await api.spotifyStatus();
     busy = false;
     flash(result.message);
     addActivity(result.message, "success");
@@ -982,7 +875,7 @@ async function deleteBinding(id: string) {
   flash("Deleting binding...");
   render();
   try {
-    const store = await invoke<BindingStore>("bindings_delete", { id });
+    const store = await api.bindingsDelete(id);
     currentBindings = store.bindings;
     const hotkeyMessage = await syncGlobalHotkeys();
     if (editingBindingId === id) resetBindingFormState();
@@ -1004,10 +897,10 @@ async function startSpotifyOnTv() {
   render();
   try {
     await persistCurrentConfig();
-    const result = await invoke<ActionResult>("start_spotify_on_tv");
-    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", { firetvIp: currentConfig.firetv_ip });
-    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
-    currentHealth = await invoke<HealthStatus>("health_check");
+    const result = await api.startSpotifyOnTv();
+    currentFireTvStatus = await api.fireTvStatus(currentConfig.firetv_ip);
+    currentSpotifyStatus = await api.spotifyStatus();
+    currentHealth = await api.healthCheck();
     busy = false;
     flash(result.message);
     addActivity(result.message, "success");
@@ -1027,8 +920,8 @@ async function toggleSpotifyOnTv() {
   render();
   try {
     await persistCurrentConfig();
-    const result = await invoke<ActionResult>("spotify_toggle_tv");
-    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    const result = await api.spotifyToggleTv();
+    currentSpotifyStatus = await api.spotifyStatus();
     busy = false;
     flash(result.message);
     addActivity(result.message, "success");
@@ -1047,14 +940,14 @@ async function startSpotifyAuth() {
   render();
   try {
     await persistCurrentConfig();
-    const result = await invoke<AuthUrlResult>("spotify_start_auth");
-    currentSpotifyDebug = await invoke<SpotifyAuthDebug>("spotify_debug_auth_flow");
+    const result = await api.spotifyStartAuth();
+    currentSpotifyDebug = await api.spotifyDebugAuthFlow();
     spotifyAuthUrl = result.url;
     render();
-    const pendingStatus = invoke<SpotifyStatus>("spotify_finish_auth_via_local_callback");
+    const pendingStatus = api.spotifyFinishAuthViaLocalCallback();
     await openUrl(result.url);
     currentSpotifyStatus = await pendingStatus;
-    currentHealth = await invoke<HealthStatus>("health_check");
+    currentHealth = await api.healthCheck();
     busy = false;
     flash("Spotify authentication completed.");
     addActivity("Spotify authentication completed.", "success");
@@ -1073,7 +966,7 @@ async function inspectSpotifyAuth() {
   render();
   try {
     await persistCurrentConfig();
-    currentSpotifyDebug = await invoke<SpotifyAuthDebug>("spotify_debug_auth_flow");
+    currentSpotifyDebug = await api.spotifyDebugAuthFlow();
     busy = false;
     flash("Spotify auth inspection refreshed.");
     render();
@@ -1092,8 +985,8 @@ async function finishSpotifyAuth() {
   render();
   try {
     await persistCurrentConfig();
-    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_finish_auth", { codeOrCallback: spotifyCallbackInput });
-    currentHealth = await invoke<HealthStatus>("health_check");
+    currentSpotifyStatus = await api.spotifyFinishAuth(spotifyCallbackInput);
+    currentHealth = await api.healthCheck();
     busy = false;
     flash("Spotify authentication completed.");
     addActivity("Spotify authentication completed.", "success");
@@ -1112,8 +1005,8 @@ async function refreshSpotifyStatus(message = "Spotify status refreshed.") {
   render();
   try {
     await persistCurrentConfig();
-    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
-    currentHealth = await invoke<HealthStatus>("health_check");
+    currentSpotifyStatus = await api.spotifyStatus();
+    currentHealth = await api.healthCheck();
     busy = false;
     flash(message);
     addActivity(message, "info");
@@ -1131,8 +1024,8 @@ async function refreshFireTvStatus(message = "Fire TV status refreshed.") {
   flash("Checking Fire TV connection...");
   render();
   try {
-    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", { firetvIp: currentConfig.firetv_ip });
-    currentHealth = await invoke<HealthStatus>("health_check");
+    currentFireTvStatus = await api.fireTvStatus(currentConfig.firetv_ip);
+    currentHealth = await api.healthCheck();
     busy = false;
     flash(message);
     addActivity(message, "info");
@@ -1150,7 +1043,7 @@ async function scanFireTvApps() {
   flash("Scanning Fire TV apps...");
   render();
   try {
-    const result = await invoke<FireTvAppScanResult>("firetv_scan_apps", { firetvIp: currentConfig.firetv_ip });
+    const result = await api.fireTvScanApps(currentConfig.firetv_ip);
     currentFireTvApps = result.apps;
     busy = false;
     flash(result.summary);
@@ -1168,7 +1061,7 @@ async function loadCachedFireTvApps() {
   flash("Loading cached Fire TV apps...");
   render();
   try {
-    currentFireTvApps = (await invoke<FireTvAppCache>("firetv_cached_apps")).apps;
+    currentFireTvApps = (await api.fireTvCachedApps()).apps;
     busy = false;
     flash(`Loaded ${currentFireTvApps.length} cached Fire TV apps.`);
     addActivity(`Loaded ${currentFireTvApps.length} cached Fire TV apps.`, "info");
@@ -1186,9 +1079,9 @@ async function triggerFireTvAction(action: FireTvAction) {
   flash(`Sending ${action}...`);
   render();
   try {
-    const result = await invoke<ActionResult>("firetv_action", { action, firetvIp: currentConfig.firetv_ip });
-    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", { firetvIp: currentConfig.firetv_ip });
-    currentHealth = await invoke<HealthStatus>("health_check");
+    const result = await api.fireTvAction(action, currentConfig.firetv_ip);
+    currentFireTvStatus = await api.fireTvStatus(currentConfig.firetv_ip);
+    currentHealth = await api.healthCheck();
     busy = false;
     flash(result.message);
     addActivity(result.message, "success");
@@ -1206,8 +1099,8 @@ async function launchFireTvApp(packageName: string) {
   flash(`Launching ${packageName}...`);
   render();
   try {
-    const result = await invoke<ActionResult>("firetv_launch_app", { packageName, firetvIp: currentConfig.firetv_ip });
-    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", { firetvIp: currentConfig.firetv_ip });
+    const result = await api.fireTvLaunchApp(packageName, currentConfig.firetv_ip);
+    currentFireTvStatus = await api.fireTvStatus(currentConfig.firetv_ip);
     busy = false;
     flash(result.message);
     addActivity(result.message, "success");
@@ -1225,8 +1118,8 @@ async function saveSettingsFromInputs(message: string) {
   flash("Saving settings...");
   render();
   try {
-    currentConfig = await invoke<AppConfig>("save_settings", { config: currentConfig });
-    currentHealth = await invoke<HealthStatus>("health_check");
+    currentConfig = await api.saveSettings(currentConfig);
+    currentHealth = await api.healthCheck();
     busy = false;
     flash(message);
     addActivity(message, "success");
@@ -1243,7 +1136,7 @@ async function refreshHealth(message = "Health status refreshed.") {
   flash("Refreshing health...");
   render();
   try {
-    currentHealth = await invoke<HealthStatus>("health_check");
+    currentHealth = await api.healthCheck();
     busy = false;
     flash(message);
     addActivity(message, "info");
@@ -1260,13 +1153,13 @@ async function loadAll(message = "Configuration loaded.") {
   flash("Loading configuration...");
   render();
   try {
-    currentConfig = await invoke<AppConfig>("get_settings");
-    currentHealth = await invoke<HealthStatus>("health_check");
-    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", { firetvIp: currentConfig.firetv_ip });
-    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
-    currentSpotifyDebug = await invoke<SpotifyAuthDebug>("spotify_debug_auth_flow");
-    currentFireTvApps = (await invoke<FireTvAppCache>("firetv_cached_apps")).apps;
-    currentBindings = (await invoke<BindingStore>("bindings_list")).bindings;
+    currentConfig = await api.getSettings();
+    currentHealth = await api.healthCheck();
+    currentFireTvStatus = await api.fireTvStatus(currentConfig.firetv_ip);
+    currentSpotifyStatus = await api.spotifyStatus();
+    currentSpotifyDebug = await api.spotifyDebugAuthFlow();
+    currentFireTvApps = (await api.fireTvCachedApps()).apps;
+    currentBindings = (await api.bindingsList()).bindings;
     spotifyAuthUrl = currentSpotifyStatus.auth_url ?? "";
     const hotkeyMessage = await syncGlobalHotkeys();
     busy = false;
@@ -1318,20 +1211,12 @@ function buildBindingPayload(): Binding {
 }
 
 async function persistCurrentConfig() {
-  currentConfig = await invoke<AppConfig>("save_settings", { config: currentConfig });
+  currentConfig = await api.saveSettings(currentConfig);
 }
 
 function addActivity(text: string, tone: Activity["tone"]) {
   recentActivity.unshift({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text, tone, at: Date.now() });
   recentActivity = recentActivity.slice(0, 8);
-}
-
-function asMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 document.addEventListener("keydown", handleHotkeyRecording, true);

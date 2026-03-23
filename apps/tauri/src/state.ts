@@ -1,0 +1,48 @@
+import type {
+  Activity,
+  AppConfig,
+  Binding,
+  FireTvApp,
+  FireTvStatus,
+  HealthStatus,
+  SpotifyAuthDebug,
+  SpotifyStatus,
+  ViewId,
+} from "./types";
+
+export const defaultConfig: AppConfig = {
+  firetv_ip: "",
+  spotify_client_id: "",
+  spotify_client_secret: "",
+  spotify_redirect_url: "",
+  spotify_target_hints: "fire, tv, amazon, spotify, insignia, toshiba, osint",
+  spotify_auth_state: "",
+};
+
+export const appState = {
+  currentConfig: { ...defaultConfig } as AppConfig,
+  currentHealth: null as HealthStatus | null,
+  currentFireTvStatus: null as FireTvStatus | null,
+  currentSpotifyStatus: null as SpotifyStatus | null,
+  currentSpotifyDebug: null as SpotifyAuthDebug | null,
+  currentFireTvApps: [] as FireTvApp[],
+  currentBindings: [] as Binding[],
+  registeredHotkeys: [] as string[],
+  currentView: "home" as ViewId,
+  openGroups: new Set(["playback", "firetv", "system"]),
+  issuesOpen: false,
+  busy: false,
+  flashMessage: "",
+  flashIsError: false,
+  fireTvAppFilter: "",
+  spotifyAuthUrl: "",
+  spotifyCallbackInput: "",
+  editingBindingId: "",
+  newBindingLabel: "",
+  newBindingHotkey: "",
+  newBindingFavorite: false,
+  newBindingActionType: "start_spotify_on_tv",
+  newBindingActionValue: "",
+  isRecordingHotkey: false,
+  recentActivity: [] as Activity[],
+};
