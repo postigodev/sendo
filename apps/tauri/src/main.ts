@@ -201,40 +201,80 @@ function renderHome() {
 }
 
 function renderSpotify() {
+  const sessionState = currentSpotifyStatus?.authenticated ? "Authenticated" : "Not authenticated";
+  const targetState = currentSpotifyStatus?.target_name ?? "Not detected";
+  const authStage = currentSpotifyDebug?.stage ?? "Unknown";
+  const redirectState = currentConfig.spotify_redirect_url.trim() ? "Ready" : "Missing";
+  const authTone = currentSpotifyStatus?.authenticated ? "ready" : "error";
+  const targetTone = currentSpotifyStatus?.target_found ? "ready" : "warning";
+  const redirectTone = currentConfig.spotify_redirect_url.trim() ? "ready" : "warning";
+
   return `
-    <section class="content-grid two-column">
-      <article class="panel">
-        <div class="panel-header"><div><p class="panel-kicker">Credentials</p><h2>Spotify</h2></div></div>
-        <form class="form" id="spotify-settings-form">
-          ${textInput("spotify-client-id", "Spotify Client ID", currentConfig.spotify_client_id, "your-client-id")}
-          ${textInput("spotify-client-secret", "Spotify Client Secret", currentConfig.spotify_client_secret, "your-client-secret")}
-          ${textInput("spotify-redirect-url", "Spotify Redirect URL", currentConfig.spotify_redirect_url, "http://127.0.0.1:8888/callback")}
-          ${textInput("spotify-target-hints", "Target hints", currentConfig.spotify_target_hints, "fire, tv, amazon")}
-          <div class="actions">
-            <button class="button-primary" id="save-spotify-settings-button" type="submit" ${busy ? "disabled" : ""}>Save Spotify settings</button>
+    <section class="spotify-layout">
+      <div class="spotify-top-row">
+        <article class="panel spotify-session-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Session</p>
+              <h2>Spotify session</h2>
+            </div>
+            <span class="status-chip ${authTone === "ready" ? "is-ready" : "is-warning"}">${escapeHtml(
+              currentSpotifyStatus?.authenticated ? "Ready" : "Needs attention",
+            )}</span>
+          </div>
+          <div class="spotify-focus-grid">
+            ${spotifyFocusCard("Authentication", sessionState, currentSpotifyStatus?.authenticated ? "OAuth session active" : "Authorize Spotify to control playback", "music-4", authTone)}
+            ${spotifyFocusCard("Target device", targetState, currentSpotifyStatus?.target_found ? "Target is available for transfer" : "Open Spotify on the TV or review the target hints", "tv", targetTone)}
+            ${spotifyFocusCard("Auth stage", authStage, currentSpotifyDebug?.detail ?? "Spotify auth flow is ready to inspect", "shield-check", "neutral")}
+          </div>
+          <div class="spotify-action-bar">
+            <button class="button-primary" id="spotify-start-auth-button" type="button" ${busy ? "disabled" : ""}>Start authentication</button>
+            <button class="button-secondary" id="spotify-toggle-button" type="button" ${busy ? "disabled" : ""}>Toggle on TV</button>
             <button class="button-secondary" id="spotify-status-button" type="button" ${busy ? "disabled" : ""}>Check status</button>
           </div>
-        </form>
-      </article>
-      <article class="panel">
-        <div class="panel-header"><div><p class="panel-kicker">Session</p><h2>Authentication and target</h2></div></div>
-        <div class="metric-grid">
-          ${metric("Session", currentSpotifyStatus?.authenticated ? "Authenticated" : "Not authenticated")}
-          ${metric("Target", currentSpotifyStatus?.target_name ?? "Not detected")}
-          ${metric("Auth stage", currentSpotifyDebug?.stage ?? "Unknown")}
-        </div>
-        <div class="actions">
-          <button class="button-primary" id="spotify-start-auth-button" type="button" ${busy ? "disabled" : ""}>Start Spotify auth</button>
-          <button class="button-secondary" id="spotify-toggle-button" type="button" ${busy ? "disabled" : ""}>Toggle on TV</button>
-          <button class="button-secondary" id="spotify-debug-button" type="button" ${busy ? "disabled" : ""}>Inspect auth</button>
-        </div>
-        ${textInput("spotify-auth-url", "Spotify auth URL", spotifyAuthUrl, "Generated after auth", true)}
-        <details class="detail-block">
-          <summary>Manual fallback</summary>
-          ${textInput("spotify-callback-input", "Callback URL or code", spotifyCallbackInput, "Paste callback URL or code")}
-          <div class="actions"><button class="button-secondary" id="spotify-finish-auth-button" type="button" ${busy ? "disabled" : ""}>Finish auth manually</button></div>
-        </details>
-      </article>
+        </article>
+        <article class="panel spotify-readiness-panel">
+          <div class="panel-header"><div><p class="panel-kicker">Readiness</p><h2>Spotify checks</h2></div></div>
+          <div class="spotify-status-list">
+            ${spotifyStatusRow("Authentication", currentSpotifyStatus?.authenticated ? "Authentication active" : "Spotify needs authorization before transfer", currentSpotifyStatus?.authenticated ? "Ready" : "Needs auth", authTone, currentSpotifyStatus?.authenticated ? "" : `<button class="link-button spotify-inline-action" data-spotify-inline="start-auth" type="button">Start auth</button>`)}
+            ${spotifyStatusRow("Target", currentSpotifyStatus?.target_found ? currentSpotifyStatus?.target_name ?? "TV target detected" : "Open Spotify on the TV or review target hints", currentSpotifyStatus?.target_found ? "Ready" : "Not found", targetTone, currentSpotifyStatus?.target_found ? "" : `<button class="link-button spotify-inline-action" data-spotify-inline="focus-target-hints" type="button">Review hints</button>`)}
+            ${spotifyStatusRow("Redirect", currentConfig.spotify_redirect_url.trim() ? currentConfig.spotify_redirect_url : "Configure a localhost callback URL", redirectState, redirectTone, currentConfig.spotify_redirect_url.trim() ? "" : `<button class="link-button spotify-inline-action" data-spotify-inline="focus-redirect" type="button">Open settings</button>`)}
+          </div>
+        </article>
+      </div>
+      <div class="spotify-bottom-row">
+        <article class="panel spotify-settings-panel">
+          <div class="panel-header"><div><p class="panel-kicker">Credentials</p><h2>Spotify settings</h2></div></div>
+          <form class="spotify-settings-form" id="spotify-settings-form">
+            ${settingsField("spotify-client-id", "Client ID", currentConfig.spotify_client_id, "your-client-id")}
+            ${settingsField("spotify-client-secret", "Client secret", currentConfig.spotify_client_secret, "your-client-secret")}
+            ${settingsField("spotify-redirect-url", "Redirect URL", currentConfig.spotify_redirect_url, "http://127.0.0.1:8888/callback")}
+            ${settingsField("spotify-target-hints", "Target hints", currentConfig.spotify_target_hints, "fire, tv, amazon")}
+            <div class="spotify-form-footer">
+              <p class="meta">These values are stored locally and used for Spotify Connect authentication and target matching.</p>
+              <div class="actions">
+                <button class="button-primary" id="save-spotify-settings-button" type="submit" ${busy ? "disabled" : ""}>Save settings</button>
+              </div>
+            </div>
+          </form>
+        </article>
+        <article class="panel spotify-advanced-panel">
+          <div class="panel-header"><div><p class="panel-kicker">Advanced</p><h2>Auth tools</h2></div></div>
+          <div class="spotify-settings-stack">
+            ${settingsField("spotify-auth-url", "Authorization URL", spotifyAuthUrl, "Generated after auth", { readOnly: true, mono: true })}
+          </div>
+          <div class="spotify-inline-tools">
+            <button class="button-secondary" id="spotify-debug-button" type="button" ${busy ? "disabled" : ""}>Inspect auth</button>
+          </div>
+          <details class="detail-block spotify-detail-block">
+            <summary>Manual fallback</summary>
+            <div class="spotify-settings-stack">
+              ${settingsField("spotify-callback-input", "Callback URL or code", spotifyCallbackInput, "Paste callback URL or code")}
+            </div>
+            <div class="actions"><button class="button-secondary" id="spotify-finish-auth-button" type="button" ${busy ? "disabled" : ""}>Finish manually</button></div>
+          </details>
+        </article>
+      </div>
     </section>
   `;
 }
@@ -420,7 +460,7 @@ function bindingForm() {
 }
 
 function navButton(view: ViewId, label: string, iconName: string, child = false) {
-  return `<button class="nav-link ${child ? "is-child " : ""}${currentView === view ? "is-active" : ""}" data-view="${view}" type="button"><span class="nav-link-copy">${icon(iconName)}<span>${escapeHtml(label)}</span></span></button>`;
+  return `<button class="nav-link ${child ? "is-child " : "is-root "}${currentView === view ? "is-active" : ""}" data-view="${view}" type="button"><span class="nav-link-copy">${icon(iconName)}<span>${escapeHtml(label)}</span></span></button>`;
 }
 
 function navGroup(id: string, label: string, items: Array<[ViewId, string, string]>) {
@@ -436,8 +476,32 @@ function textInput(id: string, label: string, value: string, placeholder: string
   return `<label><span>${escapeHtml(label)}</span><input id="${id}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" ${readOnly ? "readonly" : ""} /></label>`;
 }
 
+function settingsField(
+  id: string,
+  label: string,
+  value: string,
+  placeholder: string,
+  options?: { readOnly?: boolean; mono?: boolean },
+) {
+  return `<label class="settings-field"><span class="settings-label">${escapeHtml(label)}</span><input class="settings-input ${options?.mono ? "is-mono" : ""}" id="${id}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" ${options?.readOnly ? "readonly" : ""} /></label>`;
+}
+
 function metric(label: string, value: string, iconName = "circle") {
   return `<article class="metric-card"><div class="metric-label">${icon(iconName)}<p>${escapeHtml(label)}</p></div><h3>${escapeHtml(value)}</h3></article>`;
+}
+
+function spotifyFocusCard(
+  label: string,
+  value: string,
+  detail: string,
+  iconName: string,
+  tone: "ready" | "warning" | "error" | "neutral",
+) {
+  return `<article class="spotify-focus-card ${tone}"><div class="spotify-focus-label">${icon(iconName)}<span>${escapeHtml(label)}</span></div><strong>${escapeHtml(value)}</strong><p>${escapeHtml(detail)}</p></article>`;
+}
+
+function spotifyStatusRow(label: string, detail: string, status: string, tone: "ready" | "warning" | "error" | "neutral", actionMarkup = "") {
+  return `<article class="spotify-status-row ${tone}"><div class="spotify-status-main"><div class="spotify-status-heading"><span class="spotify-status-dot ${tone}"></span><h3>${escapeHtml(label)}</h3></div><p>${escapeHtml(detail)}</p>${actionMarkup ? `<div class="spotify-status-actions">${actionMarkup}</div>` : ""}</div><div class="spotify-status-side"><span class="mini-tag ${tone}">${escapeHtml(status)}</span></div></article>`;
 }
 
 function snapshotRow(iconName: string, label: string, value: string) {
@@ -758,6 +822,18 @@ function bindEvents() {
   document.querySelector("#spotify-debug-button")?.addEventListener("click", () => void inspectSpotifyAuth());
   document.querySelector("#spotify-finish-auth-button")?.addEventListener("click", () => void finishSpotifyAuth());
   document.querySelector("#spotify-toggle-button")?.addEventListener("click", () => void toggleSpotifyOnTv());
+  document.querySelectorAll<HTMLButtonElement>(".spotify-inline-action").forEach((button) =>
+    button.addEventListener("click", () => {
+      const action = button.dataset.spotifyInline;
+      if (action === "start-auth") {
+        void startSpotifyAuth();
+      } else if (action === "focus-target-hints") {
+        focusField("spotify-target-hints");
+      } else if (action === "focus-redirect") {
+        focusField("spotify-redirect-url");
+      }
+    }),
+  );
   document.querySelector("#firetv-check-button")?.addEventListener("click", () => void refreshFireTvStatus());
   document.querySelector("#reload-button")?.addEventListener("click", () => void loadAll("Configuration reloaded from disk."));
   document.querySelector("#health-button")?.addEventListener("click", () => void refreshHealth());
@@ -848,11 +924,17 @@ function syncSidebarIndicator() {
   const nav = document.querySelector<HTMLElement>(".sidebar-nav");
   const indicator = document.querySelector<HTMLElement>(".nav-active-indicator");
   const activeLink = document.querySelector<HTMLElement>(".sidebar-nav .nav-link.is-active");
-  if (!nav || !indicator || !activeLink) return;
+  if (!nav || !indicator) return;
+
+  if (!activeLink) {
+    indicator.style.opacity = "0";
+    sidebarIndicatorVisible = false;
+    return;
+  }
 
   const indicatorHeight = 16;
   const top = activeLink.offsetTop + (activeLink.offsetHeight - indicatorHeight) / 2;
-  const left = activeLink.classList.contains("is-child") ? 20 : 12;
+  const left = activeLink.classList.contains("is-child") ? 20 : 9;
   indicator.style.top = `${sidebarIndicatorTop}px`;
   indicator.style.left = `${sidebarIndicatorLeft}px`;
   indicator.style.opacity = sidebarIndicatorVisible ? "1" : "0";
@@ -1293,6 +1375,13 @@ function syncConfigFromInputs() {
     spotify_target_hints: document.querySelector<HTMLInputElement>("#spotify-target-hints")?.value.trim() ?? currentConfig.spotify_target_hints,
     spotify_auth_state: currentConfig.spotify_auth_state,
   };
+}
+
+function focusField(id: string) {
+  const element = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+  if (!element) return;
+  element.focus();
+  if (element instanceof HTMLInputElement) element.select();
 }
 
 function syncBindingInputs() {

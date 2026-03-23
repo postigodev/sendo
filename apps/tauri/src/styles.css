@@ -263,6 +263,10 @@ select {
   font-weight: 500;
 }
 
+.nav-link.is-root {
+  padding-left: 14px;
+}
+
 .sidebar-footer {
   display: flex;
   justify-content: flex-start;
@@ -368,6 +372,26 @@ select {
   grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.8fr);
 }
 
+.spotify-layout,
+.spotify-top-row,
+.spotify-bottom-row,
+.spotify-settings-form,
+.spotify-settings-stack,
+.spotify-status-list {
+  display: grid;
+  gap: 16px;
+}
+
+.spotify-top-row {
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.spotify-bottom-row {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: start;
+}
+
 .panel {
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -417,6 +441,62 @@ select {
 
 .panel-header {
   margin-bottom: 14px;
+}
+
+.settings-field {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-label {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.settings-input,
+input,
+select {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #202224;
+  color: var(--text);
+  padding: 10px 12px;
+  outline: none;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.settings-input::placeholder,
+input::placeholder {
+  color: color-mix(in srgb, var(--muted) 78%, transparent);
+}
+
+.settings-input:hover,
+input:hover,
+select:hover {
+  border-color: var(--border-strong);
+}
+
+.settings-input:focus,
+input:focus,
+select:focus {
+  border-color: rgba(var(--accent-rgb), 0.42);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
+}
+
+.settings-input[readonly],
+input[readonly] {
+  background: #1c1e1f;
+  color: color-mix(in srgb, var(--text) 76%, var(--muted));
+}
+
+.settings-input.is-mono {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.9rem;
 }
 
 .status-chip,
@@ -727,6 +807,152 @@ select {
   padding: 14px;
 }
 
+.spotify-session-panel,
+.spotify-readiness-panel,
+.spotify-settings-panel,
+.spotify-advanced-panel {
+  display: grid;
+  align-content: start;
+}
+
+.spotify-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.spotify-focus-card {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.spotify-focus-card strong {
+  font-size: 1.05rem;
+}
+
+.spotify-focus-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.spotify-focus-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.spotify-focus-card.ready {
+  border-color: rgba(var(--accent-rgb), 0.18);
+}
+
+.spotify-focus-card.warning {
+  border-color: rgba(var(--warn-rgb), 0.18);
+}
+
+.spotify-focus-card.error {
+  border-color: rgba(var(--error-rgb), 0.22);
+}
+
+.spotify-action-bar,
+.spotify-inline-tools,
+.spotify-form-footer {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.spotify-form-footer {
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.spotify-status-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 12px 0;
+}
+
+.spotify-status-row + .spotify-status-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.spotify-status-main {
+  display: grid;
+  gap: 6px;
+}
+
+.spotify-status-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spotify-status-heading h3 {
+  margin: 0;
+}
+
+.spotify-status-row p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.spotify-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+  flex: 0 0 auto;
+}
+
+.spotify-status-dot.ready {
+  background: var(--accent);
+}
+
+.spotify-status-dot.warning {
+  background: var(--warn);
+}
+
+.spotify-status-dot.error {
+  background: #e79292;
+}
+
+.spotify-status-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.spotify-status-side {
+  padding-top: 2px;
+}
+
+.spotify-detail-block {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.spotify-detail-block summary {
+  cursor: pointer;
+  color: var(--muted);
+  user-select: none;
+}
+
+.spotify-detail-block[open] {
+  display: grid;
+  gap: 14px;
+}
+
 .metric-card h3,
 .snapshot-value,
 .binding-row h3,
@@ -991,7 +1217,9 @@ details[open] {
 @media (max-width: 1200px) {
   .home-grid,
   .content-grid.two-column,
-  .content-grid.two-column-wide {
+  .content-grid.two-column-wide,
+  .spotify-top-row,
+  .spotify-bottom-row {
     grid-template-columns: 1fr;
   }
 }
@@ -1007,7 +1235,8 @@ details[open] {
   }
 
   .quick-grid,
-  .metric-grid {
+  .metric-grid,
+  .spotify-focus-grid {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 }
@@ -1019,6 +1248,7 @@ details[open] {
 
   .quick-grid,
   .metric-grid,
+  .spotify-focus-grid,
   .remote-pad-row {
     grid-template-columns: 1fr;
   }
@@ -1026,6 +1256,7 @@ details[open] {
   .topbar,
   .hero-top,
   .panel-header,
+  .spotify-status-row,
   .shortcut-row,
   .binding-row,
   .app-launch-row,
