@@ -870,6 +870,14 @@ function bindEvents() {
 
 async function syncGlobalHotkeys() {
   const warnings: string[] = [];
+  const desiredHotkeys = Array.from(
+    new Set(
+      currentBindings
+        .map((binding) => binding.hotkey.trim())
+        .filter((hotkey) => hotkey.length > 0),
+    ),
+  );
+
   for (const hotkey of registeredHotkeys) {
     try {
       if (await isGlobalShortcutRegistered(hotkey)) await unregisterGlobalShortcut(hotkey);
@@ -877,7 +885,23 @@ async function syncGlobalHotkeys() {
       warnings.push(`Could not unregister ${hotkey}: ${asMessage(error)}`);
     }
   }
+
+  for (const hotkey of desiredHotkeys) {
+    if (registeredHotkeys.includes(hotkey)) {
+      continue;
+    }
+
+    try {
+      if (await isGlobalShortcutRegistered(hotkey)) {
+        await unregisterGlobalShortcut(hotkey);
+      }
+    } catch (error) {
+      warnings.push(`Could not clear existing ${hotkey}: ${asMessage(error)}`);
+    }
+  }
+
   registeredHotkeys = [];
+
   for (const binding of currentBindings) {
     if (!binding.hotkey.trim()) continue;
     try {
