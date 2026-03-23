@@ -1,9 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
+import {
+  isRegistered as isGlobalShortcutRegistered,
+  register as registerGlobalShortcut,
+  unregister as unregisterGlobalShortcut,
+} from "@tauri-apps/plugin-global-shortcut";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 type AppConfig = {
   firetv_ip: string;
   spotify_client_id: string;
+  spotify_client_secret: string;
   spotify_redirect_url: string;
+  spotify_target_hints: string;
+  spotify_auth_state: string;
 };
 
 type HealthStatus = {
@@ -23,8 +32,49 @@ type FireTvStatus = {
   summary: string;
 };
 
+type FireTvApp = {
+  package_name: string;
+  display_name: string;
+  source: string;
+};
+
+type FireTvAppCache = {
+  scanned_at_epoch_ms: number;
+  apps: FireTvApp[];
+};
+
+type FireTvAppScanResult = {
+  target: string;
+  scanned_at_epoch_ms: number;
+  apps: FireTvApp[];
+  summary: string;
+};
+
 type ActionResult = {
   message: string;
+};
+
+type AuthUrlResult = {
+  url: string;
+  message: string;
+};
+
+type SpotifyStatus = {
+  configured: boolean;
+  authenticated: boolean;
+  target_found: boolean;
+  target_name: string | null;
+  summary: string;
+  auth_url: string | null;
+  token_cache_path: string;
+};
+
+type SpotifyAuthDebug = {
+  stage: string;
+  detail: string;
+  state: string;
+  redirect_uri: string;
+  token_cache_path: string;
 };
 
 type FireTvAction =
@@ -41,15 +91,50 @@ type FireTvAction =
   | "select"
   | "play_pause";
 
+type BindingAction =
+  | { launch_app: { package_name: string } }
+  | { fire_tv_key: { action: FireTvAction } }
+  | "spotify_toggle_tv"
+  | "start_spotify_on_tv";
+
+type Binding = {
+  id: string;
+  label: string;
+  hotkey: string;
+  action: BindingAction;
+};
+
+type BindingStore = {
+  bindings: Binding[];
+};
+
 const defaultConfig: AppConfig = {
   firetv_ip: "",
   spotify_client_id: "",
+  spotify_client_secret: "",
   spotify_redirect_url: "",
+  spotify_target_hints: "fire, tv, amazon, spotify, insignia, toshiba, osint",
+  spotify_auth_state: "",
 };
 
 let currentConfig: AppConfig = { ...defaultConfig };
 let currentHealth: HealthStatus | null = null;
 let currentFireTvStatus: FireTvStatus | null = null;
+let currentFireTvApps: FireTvApp[] = [];
+let currentBindings: Binding[] = [];
+let registeredHotkeys: string[] = [];
+let currentSpotifyStatus: SpotifyStatus | null = null;
+let spotifyAuthDebug: SpotifyAuthDebug | null = null;
+let spotifyAuthUrl = "";
+let spotifyCallbackInput = "";
+let spotifyAuthMode = "Auto callback in localhost";
+let fireTvAppFilter = "";
+let editingBindingId = "";
+let newBindingLabel = "";
+let newBindingHotkey = "";
+let newBindingActionType = "start_spotify_on_tv";
+let newBindingActionValue = "";
+let isRecordingHotkey = false;
 let busy = false;
 let flashMessage = "";
 let flashIsError = false;
@@ -63,7 +148,7 @@ function render() {
             <div>
               <div class="chips">
                 <span class="chip">Hito 1</span>
-                <span class="chip">Setup + health</span>
+                <span class="chip">Spotify + Fire TV</span>
               </div>
               <h1>Desk Remote control surface</h1>
               <p>
@@ -79,6 +164,13 @@ function render() {
                 ${renderBadge("Spotify", currentHealth?.spotify_configured ?? false)}
               </div>
             </div>
+          </div>
+          <div class="actions">
+            <button class="button-primary" id="start-spotify-on-tv-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Start Spotify On TV
+            </button>
           </div>
         </section>
 
@@ -111,12 +203,32 @@ function render() {
               </label>
 
               <label>
+                <span>Spotify Client Secret</span>
+                <input
+                  id="spotify-client-secret"
+                  name="spotify_client_secret"
+                  placeholder="your-client-secret"
+                  value="${escapeHtml(currentConfig.spotify_client_secret)}"
+                />
+              </label>
+
+              <label>
                 <span>Spotify Redirect URL</span>
                 <input
                   id="spotify-redirect-url"
                   name="spotify_redirect_url"
                   placeholder="http://127.0.0.1:8898/callback"
                   value="${escapeHtml(currentConfig.spotify_redirect_url)}"
+                />
+              </label>
+
+              <label>
+                <span>Spotify target hints</span>
+                <input
+                  id="spotify-target-hints"
+                  name="spotify_target_hints"
+                  placeholder="fire, tv, amazon"
+                  value="${escapeHtml(currentConfig.spotify_target_hints)}"
                 />
               </label>
 
@@ -166,6 +278,84 @@ function render() {
                 : `<p class="status-copy">No health data loaded yet.</p>`
             }
           </section>
+        </section>
+
+        <section class="panel">
+          <h2>Bindings</h2>
+          <p class="hint">
+            Persist reusable actions and optional global hotkeys. Leave hotkey empty if the binding is only for tray or manual execution.
+          </p>
+
+          <form class="form" id="binding-form">
+            <p class="meta">${editingBindingId ? "Editing existing binding" : "Create a new binding"}</p>
+            <label>
+              <span>Label</span>
+              <input id="binding-label" placeholder="Watch Spotify on TV" value="${escapeHtml(newBindingLabel)}" />
+            </label>
+            <label>
+              <span>Hotkey</span>
+              <div class="input-with-button">
+                <input id="binding-hotkey" placeholder="Ctrl+Shift+S" value="${escapeHtml(newBindingHotkey)}" />
+                <button class="button-secondary" id="binding-record-hotkey-button" type="button" ${
+                  busy ? "disabled" : ""
+                }>
+                  ${isRecordingHotkey ? "Press keys..." : "Record hotkey"}
+                </button>
+              </div>
+            </label>
+            <p class="meta">
+              ${isRecordingHotkey
+                ? "Recording hotkey. Press your combination now, Esc to cancel, or Backspace/Delete to clear."
+                : "Type it manually or use Record hotkey."}
+            </p>
+            <label>
+              <span>Action type</span>
+              <select id="binding-action-type">
+                ${renderBindingActionOptions()}
+              </select>
+            </label>
+            ${
+              bindingActionRequiresValue(newBindingActionType)
+                ? `
+                  <label>
+                    <span>${escapeHtml(bindingActionValueLabel(newBindingActionType))}</span>
+                    ${renderBindingActionValueControl()}
+                  </label>
+                `
+                : ""
+            }
+            <div class="actions">
+              <button class="button-primary" type="submit" ${busy ? "disabled" : ""}>${editingBindingId ? "Update binding" : "Save binding"}</button>
+              <button class="button-secondary" id="binding-reset-button" type="button" ${busy ? "disabled" : ""}>${editingBindingId ? "Cancel edit" : "Clear form"}</button>
+              <button class="button-secondary" id="bindings-reload-button" type="button" ${busy ? "disabled" : ""}>Reload bindings</button>
+            </div>
+          </form>
+
+          ${
+            currentBindings.length > 0
+              ? `
+                <div class="status-list remote-status">
+                  ${currentBindings
+                    .map(
+                      (binding) => `
+                        <article class="status-card app-card">
+                          <div>
+                            <h3>${escapeHtml(binding.label)}</h3>
+                            <p class="status-copy">${escapeHtml(binding.hotkey || "No hotkey")} · ${escapeHtml(describeBindingAction(binding.action))}</p>
+                          </div>
+                          <div class="actions">
+                            <button class="button-secondary edit-binding-button" data-binding-id="${escapeHtml(binding.id)}" type="button" ${busy ? "disabled" : ""}>Edit</button>
+                            <button class="button-secondary execute-binding-button" data-binding-id="${escapeHtml(binding.id)}" type="button" ${busy ? "disabled" : ""}>Run</button>
+                            <button class="button-secondary delete-binding-button" data-binding-id="${escapeHtml(binding.id)}" type="button" ${busy ? "disabled" : ""}>Delete</button>
+                          </div>
+                        </article>
+                      `,
+                    )
+                    .join("")}
+                </div>
+              `
+              : `<p class="status-copy">No bindings yet. Create one to store repeatable TV or Spotify actions.</p>`
+          }
         </section>
 
         <section class="panel">
@@ -250,6 +440,158 @@ function render() {
             }>Play/Pause</button>
           </div>
         </section>
+
+        <section class="panel">
+          <h2>Fire TV apps</h2>
+          <p class="hint">
+            Scan installed apps on the TV, cache them locally, and launch them from Desk Remote.
+          </p>
+
+          <div class="actions">
+            <button class="button-primary" id="firetv-scan-apps-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Scan Fire TV apps
+            </button>
+            <button class="button-secondary" id="firetv-load-apps-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Load cached apps
+            </button>
+          </div>
+
+          <label>
+            <span>Filter apps</span>
+            <input
+              id="firetv-app-filter"
+              placeholder="spotify, netflix, youtube..."
+              value="${escapeHtml(fireTvAppFilter)}"
+            />
+          </label>
+
+          ${
+            renderFireTvApps()
+          }
+        </section>
+
+        <section class="panel">
+          <h2>Spotify TV control</h2>
+          <p class="hint">
+            Autentica Spotify, detecta el dispositivo TV por hints y ejecuta el
+            toggle inteligente sobre la tele.
+          </p>
+
+          <div class="actions">
+            <button class="button-primary" id="spotify-status-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Check Spotify status
+            </button>
+            <button class="button-secondary" id="spotify-debug-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Inspect auth
+            </button>
+            <button class="button-secondary" id="spotify-start-auth-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Start Spotify auth
+            </button>
+            <button class="button-secondary" id="spotify-toggle-button" type="button" ${
+              busy ? "disabled" : ""
+            }>
+              Toggle on TV
+            </button>
+          </div>
+
+          ${
+            currentSpotifyStatus
+              ? `
+                <div class="status-list remote-status">
+                  <article class="status-card">
+                    <h3>Session</h3>
+                    <p class="status-copy">${currentSpotifyStatus.authenticated ? "Authenticated" : "Not authenticated"}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Target device</h3>
+                    <p class="status-copy">${escapeHtml(currentSpotifyStatus.target_name ?? "No matching device yet")}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Token cache</h3>
+                    <p class="status-copy">${escapeHtml(currentSpotifyStatus.token_cache_path)}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Summary</h3>
+                    <p class="status-copy">${escapeHtml(currentSpotifyStatus.summary)}</p>
+                  </article>
+                </div>
+              `
+              : `<p class="status-copy">Run a Spotify status check after saving your credentials.</p>`
+          }
+
+          <label>
+            <span>Spotify auth URL</span>
+            <input
+              id="spotify-auth-url"
+              placeholder="Generated after Start Spotify auth"
+              value="${escapeHtml(spotifyAuthUrl)}"
+              readonly
+            />
+          </label>
+
+          ${
+            spotifyAuthUrl
+              ? `<p class="hint">The app opens this URL automatically and waits for the localhost callback. Manual paste is only a fallback if the automatic callback fails.</p>`
+              : ""
+          }
+
+          <p class="meta">${escapeHtml(spotifyAuthMode)}</p>
+
+          ${
+            spotifyAuthDebug
+              ? `
+                <div class="status-list remote-status">
+                  <article class="status-card">
+                    <h3>Auth stage</h3>
+                    <p class="status-copy">${escapeHtml(spotifyAuthDebug.stage)}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Auth detail</h3>
+                    <p class="status-copy">${escapeHtml(spotifyAuthDebug.detail)}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>OAuth state</h3>
+                    <p class="status-copy">${escapeHtml(spotifyAuthDebug.state || "(empty)")}</p>
+                  </article>
+                  <article class="status-card">
+                    <h3>Redirect URI</h3>
+                    <p class="status-copy">${escapeHtml(spotifyAuthDebug.redirect_uri)}</p>
+                  </article>
+                </div>
+              `
+              : ""
+          }
+
+          <details>
+            <summary>Manual fallback</summary>
+            <label>
+              <span>Spotify auth code or callback URL</span>
+              <input
+                id="spotify-callback-input"
+                placeholder="Paste code or callback URL here"
+                value="${escapeHtml(spotifyCallbackInput)}"
+              />
+            </label>
+
+            <div class="actions">
+              <button class="button-secondary" id="spotify-finish-auth-button" type="button" ${
+                busy ? "disabled" : ""
+              }>
+                Finish Spotify auth
+              </button>
+            </div>
+          </details>
+        </section>
       </section>
     </main>
   `;
@@ -272,11 +614,123 @@ function render() {
     ?.addEventListener("click", () => {
       void refreshFireTvStatus("Fire TV status refreshed.");
     });
+  document
+    .querySelector<HTMLButtonElement>("#firetv-scan-apps-button")
+    ?.addEventListener("click", () => {
+      void scanFireTvApps();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#firetv-load-apps-button")
+    ?.addEventListener("click", () => {
+      void loadCachedFireTvApps();
+    });
+  document
+    .querySelector<HTMLInputElement>("#firetv-app-filter")
+    ?.addEventListener("input", (event) => {
+      fireTvAppFilter = (event.currentTarget as HTMLInputElement).value;
+      render();
+    });
+  document
+    .querySelector<HTMLFormElement>("#binding-form")
+    ?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void saveBinding();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#bindings-reload-button")
+    ?.addEventListener("click", () => {
+      void loadBindings("Bindings reloaded.");
+    });
+  document
+    .querySelector<HTMLButtonElement>("#binding-reset-button")
+    ?.addEventListener("click", () => {
+      resetBindingForm();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#binding-record-hotkey-button")
+    ?.addEventListener("click", () => {
+      toggleHotkeyRecording();
+    });
+  document
+    .querySelector<HTMLSelectElement>("#binding-action-type")
+    ?.addEventListener("change", (event) => {
+      newBindingActionType = (event.currentTarget as HTMLSelectElement).value;
+      if (newBindingActionType === "fire_tv_key") {
+        newBindingActionValue = "home";
+      } else if (newBindingActionType === "launch_app") {
+        newBindingActionValue = currentFireTvApps[0]?.package_name ?? "";
+      } else {
+        newBindingActionValue = "";
+      }
+      render();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-status-button")
+    ?.addEventListener("click", () => {
+      void refreshSpotifyStatus("Spotify status refreshed.");
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-start-auth-button")
+    ?.addEventListener("click", () => {
+      void startSpotifyAuth();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-debug-button")
+    ?.addEventListener("click", () => {
+      void inspectSpotifyAuth();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-finish-auth-button")
+    ?.addEventListener("click", () => {
+      void finishSpotifyAuth();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#spotify-toggle-button")
+    ?.addEventListener("click", () => {
+      void toggleSpotifyOnTv();
+    });
+  document
+    .querySelector<HTMLButtonElement>("#start-spotify-on-tv-button")
+    ?.addEventListener("click", () => {
+      void startSpotifyOnTv();
+    });
   document.querySelectorAll<HTMLButtonElement>(".remote-button").forEach((button) => {
     button.addEventListener("click", () => {
       const action = button.dataset.firetvAction as FireTvAction | undefined;
       if (action) {
         void triggerFireTvAction(action);
+      }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>(".launch-app-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const packageName = button.dataset.packageName;
+      if (packageName) {
+        void launchFireTvApp(packageName);
+      }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>(".execute-binding-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const bindingId = button.dataset.bindingId;
+      if (bindingId) {
+        void executeBinding(bindingId);
+      }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>(".delete-binding-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const bindingId = button.dataset.bindingId;
+      if (bindingId) {
+        void deleteBinding(bindingId);
+      }
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>(".edit-binding-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const bindingId = button.dataset.bindingId;
+      if (bindingId) {
+        startEditingBinding(bindingId);
       }
     });
   });
@@ -298,6 +752,385 @@ function renderScreenState(screenAwake: boolean | null | undefined) {
   return "Unavailable";
 }
 
+function renderFireTvApps() {
+  const filter = fireTvAppFilter.trim().toLowerCase();
+  const apps = currentFireTvApps.filter((app) => {
+    if (!filter) {
+      return true;
+    }
+
+    return (
+      app.display_name.toLowerCase().includes(filter) ||
+      app.package_name.toLowerCase().includes(filter)
+    );
+  });
+
+  if (apps.length === 0) {
+    return `<p class="status-copy">No cached apps yet. Run a scan against the Fire TV to populate this list.</p>`;
+  }
+
+  return `
+    <div class="status-list remote-status">
+      ${apps
+        .map(
+          (app) => `
+            <article class="status-card app-card">
+              <div>
+                <h3>${escapeHtml(app.display_name)}</h3>
+                <p class="status-copy">${escapeHtml(app.package_name)}</p>
+              </div>
+              <button
+                class="button-secondary launch-app-button"
+                data-package-name="${escapeHtml(app.package_name)}"
+                type="button"
+                ${busy ? "disabled" : ""}
+              >
+                Launch
+              </button>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderBindingActionOptions() {
+  return [
+    ["start_spotify_on_tv", "Start Spotify On TV"],
+    ["spotify_toggle_tv", "Spotify toggle on TV"],
+    ["fire_tv_key", "Fire TV key"],
+    ["launch_app", "Launch Fire TV app"],
+  ]
+    .map(([value, label]) => {
+      const selected = newBindingActionType === value ? "selected" : "";
+      return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+}
+
+function bindingActionRequiresValue(actionType: string) {
+  return actionType === "fire_tv_key" || actionType === "launch_app";
+}
+
+function bindingActionValueLabel(actionType: string) {
+  if (actionType === "fire_tv_key") {
+    return "Fire TV action";
+  }
+  if (actionType === "launch_app") {
+    return "Package name";
+  }
+  return "Action value";
+}
+
+function bindingActionValuePlaceholder(actionType: string) {
+  if (actionType === "fire_tv_key") {
+    return "home, back, play_pause...";
+  }
+  if (actionType === "launch_app") {
+    return "com.spotify.tv.android";
+  }
+  return "";
+}
+
+function renderBindingActionValueControl() {
+  if (newBindingActionType === "fire_tv_key") {
+    return `
+      <select id="binding-action-value">
+        ${renderFireTvActionOptions()}
+      </select>
+    `;
+  }
+
+  if (newBindingActionType === "launch_app") {
+    return `
+      <select id="binding-action-value">
+        ${renderFireTvAppOptions()}
+      </select>
+    `;
+  }
+
+  return `<input id="binding-action-value" placeholder="${escapeHtml(bindingActionValuePlaceholder(newBindingActionType))}" value="${escapeHtml(newBindingActionValue)}" />`;
+}
+
+function renderFireTvActionOptions() {
+  const options: Array<[FireTvAction, string]> = [
+    ["connect", "Connect"],
+    ["ensure_awake", "Ensure awake"],
+    ["launch_spotify", "Launch Spotify"],
+    ["wake", "Wake"],
+    ["home", "Home"],
+    ["back", "Back"],
+    ["up", "Up"],
+    ["down", "Down"],
+    ["left", "Left"],
+    ["right", "Right"],
+    ["select", "Select"],
+    ["play_pause", "Play/Pause"],
+  ];
+
+  return options
+    .map(([value, label]) => {
+      const selected = newBindingActionValue === value ? "selected" : "";
+      return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+}
+
+function renderFireTvAppOptions() {
+  if (currentFireTvApps.length === 0) {
+    return `<option value="">No cached apps yet</option>`;
+  }
+
+  const options = currentFireTvApps
+    .slice()
+    .sort((left, right) => left.display_name.localeCompare(right.display_name))
+    .map((app) => {
+      const selected = newBindingActionValue === app.package_name ? "selected" : "";
+      return `<option value="${escapeHtml(app.package_name)}" ${selected}>${escapeHtml(app.display_name)} · ${escapeHtml(app.package_name)}</option>`;
+    });
+
+  return [
+    `<option value="" ${newBindingActionValue ? "" : "selected"}>Choose cached app</option>`,
+    ...options,
+  ].join("");
+}
+
+function describeBindingAction(action: BindingAction) {
+  if (action === "spotify_toggle_tv") {
+    return "spotify_toggle_tv";
+  }
+  if (action === "start_spotify_on_tv") {
+    return "start_spotify_on_tv";
+  }
+  if ("launch_app" in action) {
+    return `launch_app(${action.launch_app.package_name})`;
+  }
+  if ("fire_tv_key" in action) {
+    return `fire_tv_key(${action.fire_tv_key.action})`;
+  }
+  return "unknown";
+}
+
+function startEditingBinding(id: string) {
+  const binding = currentBindings.find((item) => item.id === id);
+  if (!binding) {
+    flash("Binding not found.", true);
+    render();
+    return;
+  }
+
+  editingBindingId = binding.id;
+  newBindingLabel = binding.label;
+  newBindingHotkey = binding.hotkey;
+  newBindingActionType = bindingActionTypeFromBinding(binding.action);
+  newBindingActionValue = bindingActionValueFromBinding(binding.action);
+  isRecordingHotkey = false;
+  flash(`Editing binding: ${binding.label}`);
+  render();
+}
+
+function resetBindingForm() {
+  resetBindingFormState();
+  flash("Binding form cleared.");
+  render();
+}
+
+function resetBindingFormState() {
+  editingBindingId = "";
+  newBindingLabel = "";
+  newBindingHotkey = "";
+  newBindingActionType = "start_spotify_on_tv";
+  newBindingActionValue = "";
+  isRecordingHotkey = false;
+}
+
+function normalizeBindingDefaults() {
+  if (newBindingActionType === "fire_tv_key" && !newBindingActionValue) {
+    newBindingActionValue = "home";
+  }
+
+  if (newBindingActionType === "launch_app" && !newBindingActionValue) {
+    newBindingActionValue = currentFireTvApps[0]?.package_name ?? "";
+  }
+}
+
+function bindingActionTypeFromBinding(action: BindingAction) {
+  if (action === "spotify_toggle_tv") {
+    return "spotify_toggle_tv";
+  }
+  if (action === "start_spotify_on_tv") {
+    return "start_spotify_on_tv";
+  }
+  if (typeof action === "object" && "launch_app" in action) {
+    return "launch_app";
+  }
+  if (typeof action === "object" && "fire_tv_key" in action) {
+    return "fire_tv_key";
+  }
+  return "start_spotify_on_tv";
+}
+
+function bindingActionValueFromBinding(action: BindingAction) {
+  if (typeof action === "object" && "launch_app" in action) {
+    return action.launch_app.package_name;
+  }
+  if (typeof action === "object" && "fire_tv_key" in action) {
+    return action.fire_tv_key.action;
+  }
+  return "";
+}
+
+function toggleHotkeyRecording() {
+  if (busy) {
+    return;
+  }
+
+  isRecordingHotkey = !isRecordingHotkey;
+  flash(
+    isRecordingHotkey
+      ? "Recording hotkey. Press your combination now."
+      : "Hotkey recording cancelled.",
+  );
+  render();
+}
+
+function handleHotkeyRecording(event: KeyboardEvent) {
+  if (!isRecordingHotkey || busy) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (event.key === "Escape") {
+    isRecordingHotkey = false;
+    flash("Hotkey recording cancelled.");
+    render();
+    return;
+  }
+
+  if (
+    (event.key === "Backspace" || event.key === "Delete") &&
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey
+  ) {
+    newBindingHotkey = "";
+    isRecordingHotkey = false;
+    flash("Hotkey cleared.");
+    render();
+    return;
+  }
+
+  const hotkey = formatHotkey(event);
+  if (!hotkey) {
+    flash("Add at least one modifier and one key.");
+    render();
+    return;
+  }
+
+  newBindingHotkey = hotkey;
+  isRecordingHotkey = false;
+  flash(`Hotkey recorded: ${hotkey}`);
+  render();
+}
+
+function formatHotkey(event: KeyboardEvent) {
+  const mainKey = normalizeHotkeyKey(event.key);
+  if (!mainKey) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  if (event.ctrlKey) {
+    parts.push("Ctrl");
+  }
+  if (event.altKey) {
+    parts.push("Alt");
+  }
+  if (event.shiftKey) {
+    parts.push("Shift");
+  }
+  if (event.metaKey) {
+    parts.push("Super");
+  }
+
+  if (parts.length === 0) {
+    return "";
+  }
+
+  parts.push(mainKey);
+  return parts.join("+");
+}
+
+function normalizeHotkeyKey(key: string) {
+  if (["Control", "Shift", "Alt", "Meta"].includes(key)) {
+    return "";
+  }
+
+  if (key === " ") {
+    return "Space";
+  }
+
+  if (key === "ArrowUp") {
+    return "Up";
+  }
+  if (key === "ArrowDown") {
+    return "Down";
+  }
+  if (key === "ArrowLeft") {
+    return "Left";
+  }
+  if (key === "ArrowRight") {
+    return "Right";
+  }
+
+  if (key.length === 1) {
+    return key.toUpperCase();
+  }
+
+  return key;
+}
+
+async function syncGlobalHotkeys() {
+  const warnings: string[] = [];
+
+  for (const hotkey of registeredHotkeys) {
+    try {
+      if (await isGlobalShortcutRegistered(hotkey)) {
+        await unregisterGlobalShortcut(hotkey);
+      }
+    } catch (error) {
+      warnings.push(`Could not unregister ${hotkey}: ${asMessage(error)}`);
+    }
+  }
+
+  registeredHotkeys = [];
+
+  for (const binding of currentBindings) {
+    const hotkey = binding.hotkey.trim();
+    if (!hotkey) {
+      continue;
+    }
+
+    try {
+      await registerGlobalShortcut(hotkey, () => {
+        if (busy) {
+          return;
+        }
+        void executeBinding(binding.id);
+      });
+      registeredHotkeys.push(hotkey);
+    } catch (error) {
+      warnings.push(`Could not register ${hotkey}: ${asMessage(error)}`);
+    }
+  }
+
+  return warnings.join(" ");
+}
+
 async function onSave(event: SubmitEvent) {
   event.preventDefault();
   const form = event.currentTarget as HTMLFormElement;
@@ -306,7 +1139,10 @@ async function onSave(event: SubmitEvent) {
   currentConfig = {
     firetv_ip: readField(formData, "firetv_ip"),
     spotify_client_id: readField(formData, "spotify_client_id"),
+    spotify_client_secret: readField(formData, "spotify_client_secret"),
     spotify_redirect_url: readField(formData, "spotify_redirect_url"),
+    spotify_target_hints: readField(formData, "spotify_target_hints"),
+    spotify_auth_state: currentConfig.spotify_auth_state,
   };
 
   busy = true;
@@ -336,8 +1172,16 @@ async function loadAll(message = "Configuration loaded.") {
     currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
       firetvIp: currentConfig.firetv_ip,
     });
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    spotifyAuthDebug = await invoke<SpotifyAuthDebug>("spotify_debug_auth_flow");
+    const appCache = await invoke<FireTvAppCache>("firetv_cached_apps");
+    currentFireTvApps = appCache.apps;
+    const bindingStore = await invoke<BindingStore>("bindings_list");
+    currentBindings = bindingStore.bindings;
+    const hotkeyMessage = await syncGlobalHotkeys();
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? "";
     busy = false;
-    flash(message);
+    flash(hotkeyMessage ? `${message} ${hotkeyMessage}` : message);
     render();
   } catch (error) {
     busy = false;
@@ -372,6 +1216,302 @@ async function refreshFireTvStatus(message = "Fire TV status refreshed.") {
     currentHealth = await invoke<HealthStatus>("health_check");
     busy = false;
     flash(message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function loadCachedFireTvApps() {
+  busy = true;
+  flash("Loading cached Fire TV apps...");
+  render();
+
+  try {
+    const cache = await invoke<FireTvAppCache>("firetv_cached_apps");
+    currentFireTvApps = cache.apps;
+    busy = false;
+    flash(`Loaded ${cache.apps.length} cached Fire TV apps.`);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function loadBindings(message = "Bindings loaded.") {
+  busy = true;
+  flash("Loading bindings...");
+  render();
+
+  try {
+    const store = await invoke<BindingStore>("bindings_list");
+    currentBindings = store.bindings;
+    const hotkeyMessage = await syncGlobalHotkeys();
+    busy = false;
+    flash(hotkeyMessage ? `${message} ${hotkeyMessage}` : message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function saveBinding() {
+  syncConfigFromInputs();
+  syncBindingInputs();
+  busy = true;
+  flash("Saving binding...");
+  render();
+
+  try {
+    const store = await invoke<BindingStore>("bindings_save", {
+      binding: buildBindingPayload(),
+    });
+    currentBindings = store.bindings;
+    const hotkeyMessage = await syncGlobalHotkeys();
+    resetBindingFormState();
+    busy = false;
+    flash(hotkeyMessage ? `Binding saved. ${hotkeyMessage}` : "Binding saved.");
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function executeBinding(id: string) {
+  busy = true;
+  flash("Running binding...");
+  render();
+
+  try {
+    const result = await invoke<ActionResult>("bindings_execute", { id });
+    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
+      firetvIp: currentConfig.firetv_ip,
+    });
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    busy = false;
+    flash(result.message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function deleteBinding(id: string) {
+  busy = true;
+  flash("Deleting binding...");
+  render();
+
+  try {
+    const store = await invoke<BindingStore>("bindings_delete", { id });
+    currentBindings = store.bindings;
+    const hotkeyMessage = await syncGlobalHotkeys();
+    if (editingBindingId === id) {
+      resetBindingFormState();
+    }
+    busy = false;
+    flash(hotkeyMessage ? `Binding deleted. ${hotkeyMessage}` : "Binding deleted.");
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function scanFireTvApps() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Scanning Fire TV apps...");
+  render();
+
+  try {
+    const result = await invoke<FireTvAppScanResult>("firetv_scan_apps", {
+      firetvIp: currentConfig.firetv_ip,
+    });
+    currentFireTvApps = result.apps;
+    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
+      firetvIp: currentConfig.firetv_ip,
+    });
+    busy = false;
+    flash(result.summary);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function refreshSpotifyStatus(message = "Spotify status refreshed.") {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Checking Spotify status...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    flash(message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function startSpotifyAuth() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Starting Spotify auth...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    const result = await invoke<AuthUrlResult>("spotify_start_auth");
+    spotifyAuthDebug = await invoke<SpotifyAuthDebug>("spotify_debug_auth_flow");
+    spotifyAuthUrl = result.url;
+    spotifyAuthMode = "Waiting for Spotify callback on localhost...";
+    render();
+
+    const pendingStatus = invoke<SpotifyStatus>("spotify_finish_auth_via_local_callback");
+    await openUrl(result.url);
+    currentSpotifyStatus = await pendingStatus;
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    spotifyAuthMode = "Spotify auth completed through localhost callback";
+    flash("Spotify authentication completed.");
+    render();
+  } catch (error) {
+    busy = false;
+    spotifyAuthMode = "Automatic Spotify auth failed; use manual callback input if needed";
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function inspectSpotifyAuth() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Inspecting Spotify auth setup...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    spotifyAuthDebug = await invoke<SpotifyAuthDebug>("spotify_debug_auth_flow");
+    busy = false;
+    flash("Spotify auth inspection refreshed.");
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function finishSpotifyAuth() {
+  syncConfigFromInputs();
+  spotifyCallbackInput =
+    document.querySelector<HTMLInputElement>("#spotify-callback-input")?.value.trim() ??
+    spotifyCallbackInput;
+
+  busy = true;
+  flash("Finishing Spotify auth...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_finish_auth", {
+      codeOrCallback: spotifyCallbackInput,
+    });
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    spotifyAuthMode = "Spotify auth completed from pasted callback";
+    flash("Spotify authentication completed.");
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function toggleSpotifyOnTv() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Running Spotify TV toggle...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    const result = await invoke<ActionResult>("spotify_toggle_tv");
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    spotifyAuthUrl = currentSpotifyStatus.auth_url ?? spotifyAuthUrl;
+    busy = false;
+    flash(result.message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function startSpotifyOnTv() {
+  syncConfigFromInputs();
+  busy = true;
+  flash("Preparing Fire TV and Spotify...");
+  render();
+
+  try {
+    await persistCurrentConfig();
+    const result = await invoke<ActionResult>("start_spotify_on_tv");
+    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
+      firetvIp: currentConfig.firetv_ip,
+    });
+    currentSpotifyStatus = await invoke<SpotifyStatus>("spotify_status");
+    currentHealth = await invoke<HealthStatus>("health_check");
+    busy = false;
+    flash(result.message);
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    render();
+  }
+}
+
+async function launchFireTvApp(packageName: string) {
+  syncConfigFromInputs();
+  busy = true;
+  flash(`Launching ${packageName}...`);
+  render();
+
+  try {
+    const result = await invoke<ActionResult>("firetv_launch_app", {
+      packageName,
+      firetvIp: currentConfig.firetv_ip,
+    });
+    currentFireTvStatus = await invoke<FireTvStatus>("firetv_status", {
+      firetvIp: currentConfig.firetv_ip,
+    });
+    busy = false;
+    flash(result.message);
     render();
   } catch (error) {
     busy = false;
@@ -420,18 +1560,76 @@ function syncConfigFromInputs() {
     document.querySelector<HTMLInputElement>("#spotify-client-id");
   const spotifyRedirectUrlInput =
     document.querySelector<HTMLInputElement>("#spotify-redirect-url");
+  const spotifyClientSecretInput =
+    document.querySelector<HTMLInputElement>("#spotify-client-secret");
+  const spotifyTargetHintsInput =
+    document.querySelector<HTMLInputElement>("#spotify-target-hints");
+  const spotifyCallbackValue =
+    document.querySelector<HTMLInputElement>("#spotify-callback-input");
 
   currentConfig = {
     firetv_ip: fireTvInput?.value.trim() ?? currentConfig.firetv_ip,
     spotify_client_id:
       spotifyClientIdInput?.value.trim() ?? currentConfig.spotify_client_id,
+    spotify_client_secret:
+      spotifyClientSecretInput?.value.trim() ?? currentConfig.spotify_client_secret,
     spotify_redirect_url:
       spotifyRedirectUrlInput?.value.trim() ?? currentConfig.spotify_redirect_url,
+    spotify_target_hints:
+      spotifyTargetHintsInput?.value.trim() ?? currentConfig.spotify_target_hints,
+    spotify_auth_state: currentConfig.spotify_auth_state,
+  };
+
+  spotifyCallbackInput = spotifyCallbackValue?.value.trim() ?? spotifyCallbackInput;
+}
+
+function syncBindingInputs() {
+  normalizeBindingDefaults();
+  newBindingLabel =
+    document.querySelector<HTMLInputElement>("#binding-label")?.value.trim() ?? newBindingLabel;
+  newBindingHotkey =
+    document.querySelector<HTMLInputElement>("#binding-hotkey")?.value.trim() ?? newBindingHotkey;
+  newBindingActionType =
+    document.querySelector<HTMLSelectElement>("#binding-action-type")?.value.trim() ??
+    newBindingActionType;
+  newBindingActionValue =
+    document.querySelector<HTMLInputElement>("#binding-action-value")?.value.trim() ??
+    newBindingActionValue;
+}
+
+function buildBindingPayload(): Binding {
+  normalizeBindingDefaults();
+  const actionType = newBindingActionType.trim();
+  let action: BindingAction;
+
+  if (actionType === "spotify_toggle_tv") {
+    action = "spotify_toggle_tv";
+  } else if (actionType === "start_spotify_on_tv") {
+    action = "start_spotify_on_tv";
+  } else if (actionType === "launch_app") {
+    action = { launch_app: { package_name: newBindingActionValue.trim() } };
+  } else if (actionType === "fire_tv_key") {
+    action = { fire_tv_key: { action: newBindingActionValue.trim() as FireTvAction } };
+  } else {
+    throw new Error(`Unsupported binding action type: ${actionType}`);
+  }
+
+  return {
+    id: editingBindingId,
+    label: newBindingLabel,
+    hotkey: newBindingHotkey,
+    action,
   };
 }
 
 function asMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function persistCurrentConfig() {
+  currentConfig = await invoke<AppConfig>("save_settings", {
+    config: currentConfig,
+  });
 }
 
 function escapeHtml(value: string) {
@@ -442,5 +1640,7 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+document.addEventListener("keydown", handleHotkeyRecording, true);
 
 void loadAll();

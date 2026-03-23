@@ -24,7 +24,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -126,7 +127,15 @@ label {
   gap: 8px;
 }
 
-input {
+.input-with-button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+input,
+select {
   width: 100%;
   border: 1px solid rgba(190, 216, 197, 0.18);
   border-radius: 14px;
@@ -135,7 +144,8 @@ input {
   background: rgba(248, 255, 250, 0.06);
 }
 
-input:focus {
+input:focus,
+select:focus {
   outline: 2px solid rgba(122, 192, 150, 0.45);
   outline-offset: 2px;
 }
@@ -195,6 +205,17 @@ button:disabled {
 
 .status-card h3 {
   margin: 0 0 8px;
+}
+
+.app-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-card .actions {
+  justify-content: flex-end;
 }
 
 .flash {

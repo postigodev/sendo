@@ -10,7 +10,10 @@ use std::{
 pub struct AppConfig {
     pub firetv_ip: String,
     pub spotify_client_id: String,
+    pub spotify_client_secret: String,
     pub spotify_redirect_url: String,
+    pub spotify_target_hints: String,
+    pub spotify_auth_state: String,
 }
 
 impl AppConfig {
@@ -43,7 +46,23 @@ impl AppConfig {
         ConfiguredServices {
             firetv_ready: !self.firetv_ip.trim().is_empty(),
             spotify_ready: !self.spotify_client_id.trim().is_empty()
+                && !self.spotify_client_secret.trim().is_empty()
                 && !self.spotify_redirect_url.trim().is_empty(),
+        }
+    }
+
+    pub fn spotify_target_hint_list(&self) -> Vec<String> {
+        let hints = self
+            .spotify_target_hints
+            .split(',')
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+
+        if hints.is_empty() {
+            default_spotify_target_hints()
+        } else {
+            hints
         }
     }
 }
@@ -59,7 +78,7 @@ pub fn config_file_path() -> Result<PathBuf> {
     Ok(base_dir.join("config.json"))
 }
 
-fn app_data_dir() -> Result<PathBuf> {
+pub fn app_data_dir() -> Result<PathBuf> {
     if let Ok(appdata) = env::var("APPDATA") {
         return Ok(PathBuf::from(appdata).join("Desk Remote"));
     }
@@ -84,4 +103,11 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn default_spotify_target_hints() -> Vec<String> {
+    ["fire", "tv", "amazon", "spotify", "insignia", "toshiba", "osint"]
+        .into_iter()
+        .map(|value| value.to_string())
+        .collect()
 }
