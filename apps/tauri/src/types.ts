@@ -74,6 +74,7 @@ export type FireTvAction =
   | "ensure_awake"
   | "launch_spotify"
   | "wake"
+  | "power_off"
   | "home"
   | "back"
   | "up"

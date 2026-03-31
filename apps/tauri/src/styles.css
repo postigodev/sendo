@@ -623,6 +623,16 @@ input[readonly] {
   border: 1px solid var(--border);
 }
 
+.button-danger {
+  border-color: rgba(var(--error-rgb), 0.22);
+  color: color-mix(in srgb, var(--error) 80%, white 20%);
+}
+
+.button-danger:hover:not(:disabled) {
+  border-color: rgba(var(--error-rgb), 0.34);
+  background: rgba(var(--error-rgb), 0.06);
+}
+
 .link-button,
 .icon-button {
   background: transparent;
@@ -658,6 +668,65 @@ input[readonly] {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
+}
+
+.device-control-panel,
+.firetv-state-panel {
+  align-content: start;
+}
+
+.device-control-stack {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+  min-height: 100%;
+}
+
+.device-control-block {
+  display: grid;
+  gap: 12px;
+}
+
+.device-control-block + .device-control-block {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.device-control-block--actions {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.device-control-block-header h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.device-control-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.device-control-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.device-control-strip .button-secondary,
+.device-control-strip .button-primary {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.device-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .quick-access-manage-main {

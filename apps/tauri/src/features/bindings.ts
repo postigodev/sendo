@@ -67,6 +67,7 @@ export function renderBindingActionControl(
       "connect",
       "ensure_awake",
       "launch_spotify",
+      "power_off",
       "wake",
       "home",
       "back",
