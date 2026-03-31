@@ -7,7 +7,7 @@ export function renderRemote(busy: boolean) {
         <div>
           <p class="panel-kicker">Manual control</p>
           <h2>Remote</h2>
-          <p class="panel-subcopy">Use the D-pad for navigation and the side controls for playback, volume, and TV actions.</p>
+          <p class="panel-subcopy">Navigation on the left. Playback, volume, and power on the right.</p>
         </div>
       </div>
       <div class="remote-console-grid">
@@ -37,21 +37,21 @@ export function renderRemote(busy: boolean) {
           <div class="remote-control-stack">
             <div class="remote-control-group">
               <p class="remote-group-label">Playback</p>
-              <div class="remote-control-grid">
+              <div class="remote-control-stack-list">
                 <button class="button-secondary remote-button remote-button--control" data-firetv-action="play_pause" type="button" ${busy ? "disabled" : ""}>${icon("play")}<span>Play/Pause</span></button>
-                <button class="button-secondary remote-button remote-button--control" data-firetv-action="launch_spotify" type="button" ${busy ? "disabled" : ""}>${icon("music-4")}<span>Open Spotify</span></button>
+                <button class="button-secondary remote-button remote-button--control" data-firetv-action="launch_spotify" type="button" ${busy ? "disabled" : ""}>${icon("music-4")}<span>Spotify</span></button>
               </div>
             </div>
             <div class="remote-control-group">
               <p class="remote-group-label">Volume</p>
-              <div class="remote-control-grid">
-                <button class="button-secondary remote-button remote-button--control" data-firetv-action="volume_up" type="button" ${busy ? "disabled" : ""}>${icon("volume-2")}<span>Volume up</span></button>
-                <button class="button-secondary remote-button remote-button--control" data-firetv-action="volume_down" type="button" ${busy ? "disabled" : ""}>${icon("volume-1")}<span>Volume down</span></button>
+              <div class="remote-control-stack-list">
+                <button class="button-secondary remote-button remote-button--control" data-firetv-action="volume_up" type="button" ${busy ? "disabled" : ""}>${icon("volume-2")}<span>Vol +</span></button>
+                <button class="button-secondary remote-button remote-button--control" data-firetv-action="volume_down" type="button" ${busy ? "disabled" : ""}>${icon("volume-1")}<span>Vol -</span></button>
               </div>
             </div>
             <div class="remote-control-group">
               <p class="remote-group-label">Power</p>
-              <div class="remote-control-grid">
+              <div class="remote-control-stack-list">
                 <button class="button-secondary remote-button remote-button--control" data-firetv-action="ensure_awake" type="button" ${busy ? "disabled" : ""}>${icon("zap")}<span>Wake</span></button>
                 <button class="button-secondary button-danger remote-button remote-button--control" data-firetv-action="power_off" type="button" ${busy ? "disabled" : ""}>${icon("power")}<span>Power off</span></button>
               </div>

@@ -1711,14 +1711,15 @@ input[readonly] {
 
 .remote-console-grid {
   display: grid;
-  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: minmax(320px, 372px) minmax(280px, 420px);
+  gap: 20px;
   align-items: start;
+  justify-content: start;
 }
 
 .remote-cluster {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .remote-cluster-header h3 {
@@ -1727,9 +1728,9 @@ input[readonly] {
 }
 
 .remote-pad {
-  max-width: 340px;
+  max-width: 372px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .remote-pad-row {
@@ -1740,21 +1741,21 @@ input[readonly] {
 
 .remote-button--pad,
 .remote-button--select {
-  min-height: 56px;
+  min-height: 64px;
   padding: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .remote-button--pad .ui-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .remote-button--select {
-  min-height: 60px;
+  min-height: 68px;
   font-weight: 600;
 }
 
@@ -1762,17 +1763,17 @@ input[readonly] {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  max-width: 340px;
+  max-width: 372px;
 }
 
 .remote-button--utility,
 .remote-button--control {
-  min-height: 40px;
-  padding: 9px 12px;
-  border-radius: 10px;
+  min-height: 38px;
+  padding: 8px 11px;
+  border-radius: 9px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -1784,12 +1785,13 @@ input[readonly] {
 
 .remote-control-stack {
   display: grid;
-  gap: 16px;
+  gap: 14px;
+  max-width: 420px;
 }
 
 .remote-control-group {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .remote-group-label {
@@ -1801,10 +1803,11 @@ input[readonly] {
   text-transform: uppercase;
 }
 
-.remote-control-grid {
+.remote-control-grid,
+.remote-control-stack-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 kbd {
@@ -1867,7 +1870,8 @@ details[open] {
   .metric-grid,
   .remote-pad-row,
   .remote-nav-actions,
-  .remote-control-grid {
+  .remote-control-grid,
+  .remote-control-stack-list {
     grid-template-columns: 1fr;
   }
 
