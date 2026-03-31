@@ -57,8 +57,11 @@ let {
   sidebarIndicatorLeft,
   sidebarIndicatorVisible,
   recentActivity,
+  spotifyPollingPaused,
 } = appState;
 let flashTimeoutId: number | null = null;
+let spotifyPollIntervalId: number | null = null;
+let spotifyPollInFlight = false;
 
 function render() {
   const issues = deriveIssues(currentConfig, currentFireTvStatus, currentSpotifyStatus);
@@ -114,6 +117,7 @@ function render() {
   renderIcons();
   bindEvents();
   syncSidebarIndicator();
+  syncSpotifyPolling();
 }
 
 function filteredApps() {
@@ -672,6 +676,50 @@ async function refreshSpotifyStatus(message = "Spotify status refreshed.") {
   }
 }
 
+async function pollSpotifyStatus() {
+  if (spotifyPollInFlight || currentView !== "spotify" || spotifyPollingPaused) return;
+
+  spotifyPollInFlight = true;
+  try {
+    currentSpotifyStatus = await api.spotifyStatus();
+    if (currentView === "spotify") {
+      render();
+    }
+  } catch {
+    // Keep polling resilient and silent.
+  } finally {
+    spotifyPollInFlight = false;
+  }
+}
+
+function shouldPollSpotify() {
+  return currentView === "spotify" && !spotifyPollingPaused;
+}
+
+function syncSpotifyPolling() {
+  if (!shouldPollSpotify()) {
+    stopSpotifyPolling();
+    return;
+  }
+
+  if (spotifyPollIntervalId !== null) return;
+
+  spotifyPollIntervalId = window.setInterval(() => {
+    void pollSpotifyStatus();
+  }, 2500);
+}
+
+function stopSpotifyPolling() {
+  if (spotifyPollIntervalId === null) return;
+  window.clearInterval(spotifyPollIntervalId);
+  spotifyPollIntervalId = null;
+}
+
+function handleSpotifyPollingVisibility() {
+  spotifyPollingPaused = document.visibilityState !== "visible" || !document.hasFocus();
+  syncSpotifyPolling();
+}
+
 async function runSpotifyPlayerAction(loadingMessage: string, action: () => Promise<{ message: string }>) {
   syncConfigFromInputs();
   busy = true;
@@ -1053,5 +1101,8 @@ document.addEventListener("keydown", handleHotkeyRecording, true);
 document.addEventListener("pointermove", handleQuickAccessPointerMove, true);
 document.addEventListener("pointerup", handleQuickAccessPointerUp, true);
 window.addEventListener("resize", syncSidebarIndicator);
+window.addEventListener("focus", handleSpotifyPollingVisibility);
+window.addEventListener("blur", handleSpotifyPollingVisibility);
+document.addEventListener("visibilitychange", handleSpotifyPollingVisibility);
 
 void loadAll();

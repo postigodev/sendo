@@ -381,6 +381,13 @@ select {
   gap: 16px;
 }
 
+.spotify-session-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
 .panel {
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -1461,6 +1468,11 @@ input[readonly] {
   align-content: start;
 }
 
+.spotify-session-panel--status {
+  gap: 12px;
+  padding: 16px 18px;
+}
+
 .spotify-action-bar,
 .spotify-inline-tools,
 .spotify-form-footer {
@@ -1674,6 +1686,10 @@ input[readonly] {
 }
 
 .spotify-session-state .spotify-status-list {
+  gap: 0;
+}
+
+.spotify-session-panel--status .spotify-status-list {
   gap: 0;
 }
 
@@ -2208,6 +2224,10 @@ details[open] {
   .spotify-session-shell {
     grid-template-columns: 1fr;
     gap: 16px;
+  }
+
+  .spotify-session-layout {
+    grid-template-columns: 1fr;
   }
 
   .spotify-player-controls {

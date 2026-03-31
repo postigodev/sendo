@@ -24,7 +24,6 @@ export function renderSpotify({
 }: SpotifyDeps) {
   const authStatus = currentSpotifyStatus?.authenticated ? "Active" : "Missing";
   const targetState = currentSpotifyStatus?.target_name ?? "Not detected";
-  const playbackReady = Boolean(currentSpotifyStatus?.authenticated && currentSpotifyStatus?.target_found);
   const activity = recentActivity
     .filter((item) => {
       const text = item.text.toLowerCase();
@@ -35,10 +34,24 @@ export function renderSpotify({
   const authTone = currentSpotifyStatus?.authenticated ? "ready" : "error";
   const targetTone = currentSpotifyStatus?.target_found ? "neutral" : "warning";
   const redirectTone = currentConfig.spotify_redirect_url.trim() ? "ready" : "warning";
-  const playbackTone = playbackReady ? "ready" : currentSpotifyStatus?.authenticated ? "neutral" : "error";
-  const targetStatus = currentSpotifyStatus?.target_found ? targetState : "Missing";
-  const playbackStatus = playbackReady ? "Ready" : currentSpotifyStatus?.authenticated ? "Connected" : "Missing";
   const nowPlaying = currentSpotifyStatus?.now_playing ?? null;
+  const playbackTone = currentSpotifyStatus?.playback_on_target
+    ? nowPlaying?.is_playing
+      ? "ready"
+      : "neutral"
+    : currentSpotifyStatus?.authenticated
+      ? "warning"
+      : "error";
+  const targetStatus = currentSpotifyStatus?.target_found ? targetState : "Missing";
+  const playbackStatus = currentSpotifyStatus?.playback_on_target
+    ? nowPlaying?.is_playing
+      ? "Active"
+      : "Ready"
+    : currentSpotifyStatus?.playback_device_name
+      ? "Elsewhere"
+      : currentSpotifyStatus?.authenticated
+        ? "Ready"
+        : "Missing";
   const hasNowPlaying = Boolean(nowPlaying?.track_name || nowPlaying?.artist_name || nowPlaying?.album_cover_url);
   const progressRatio =
     nowPlaying?.progress_ms != null && nowPlaying?.duration_ms
@@ -50,8 +63,8 @@ export function renderSpotify({
 
   return `
     <section class="spotify-page">
-      <article class="panel spotify-session-panel spotify-session-panel--primary">
-        <div class="spotify-session-shell">
+      <section class="spotify-session-layout">
+        <article class="panel spotify-session-panel spotify-session-panel--primary">
           <div class="spotify-session-controls">
             <div class="spotify-now-playing-card ${hasNowPlaying ? "is-active" : "is-idle"}">
               ${
@@ -67,9 +80,17 @@ export function renderSpotify({
                     <div class="spotify-now-playing-copy">
                       <div class="spotify-now-playing-head">
                         <p class="panel-kicker">Now playing</p>
-                        <h3>${escapeHtml(nowPlaying?.track_name ?? "No active Spotify playback")}</h3>
+                        <h3>${escapeHtml(
+                          currentSpotifyStatus?.playback_on_target
+                            ? nowPlaying?.track_name ?? "No active Spotify playback"
+                            : "No active playback on TV",
+                        )}</h3>
                         <p class="spotify-now-playing-artist">${escapeHtml(
-                          nowPlaying?.artist_name ?? "Start playback on your TV to see track details.",
+                          currentSpotifyStatus?.playback_on_target
+                            ? nowPlaying?.artist_name ?? "Start playback on your TV to see track details."
+                            : currentSpotifyStatus?.playback_device_name
+                              ? `Playback is currently on ${currentSpotifyStatus.playback_device_name}. Use Send to TV to move it here.`
+                              : "Start playback on your TV to see track details.",
                         )}</p>
                       </div>
                       <div class="spotify-progress-block">
@@ -131,18 +152,20 @@ export function renderSpotify({
               </div>
             </div>
           </div>
-          <div class="spotify-session-state">
-            <div class="spotify-status-list">
-              ${spotifyStatusRow("Playback", playbackStatus, "play", playbackTone)}
-              ${spotifyStatusRow("Target", targetStatus, "tv", targetTone)}
-              ${spotifyStatusRow("Authentication", authStatus, "key-round", authTone)}
-            </div>
+          <div class="spotify-last-action">
+            <span class="spotify-last-action-label">${icon("history")}<span>${escapeHtml(lastSpotifyActivity ? `Last action: ${lastSpotifyActivity.text} (${timeAgo(lastSpotifyActivity.at)})` : "Last action: No recent activity")}</span></span>
           </div>
-        </div>
-        <div class="spotify-last-action">
-          <span class="spotify-last-action-label">${icon("history")}<span>${escapeHtml(lastSpotifyActivity ? `Last action: ${lastSpotifyActivity.text} (${timeAgo(lastSpotifyActivity.at)})` : "Last action: No recent activity")}</span></span>
-        </div>
-      </article>
+        </article>
+
+        <aside class="panel spotify-session-panel spotify-session-panel--status">
+          <div class="panel-header"><div><p class="panel-kicker">Session</p><h2>Playback and device</h2></div></div>
+          <div class="spotify-status-list">
+            ${spotifyStatusRow("Playback", playbackStatus, "play", playbackTone)}
+            ${spotifyStatusRow("Target", targetStatus, "tv", targetTone)}
+            ${spotifyStatusRow("Authentication", authStatus, "key-round", authTone)}
+          </div>
+        </aside>
+      </section>
 
       <article class="panel spotify-activity-panel">
         <div class="panel-header"><div><p class="panel-kicker">Activity</p><h2>Recent Spotify activity</h2></div></div>

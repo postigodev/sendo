@@ -55,7 +55,10 @@ export type SpotifyStatus = {
   configured: boolean;
   authenticated: boolean;
   target_found: boolean;
+  target_id: string | null;
   target_name: string | null;
+  playback_on_target: boolean;
+  playback_device_name: string | null;
   now_playing: SpotifyNowPlaying | null;
   summary: string;
   auth_url: string | null;
