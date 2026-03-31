@@ -1,43 +1,61 @@
 # Desk Remote
 
-Desk Remote is a desktop app for controlling a Fire TV from Windows and routing Spotify playback to the TV.
+Desk Remote is a Windows desktop control app for Fire TV and Spotify.
 
-Today the project is no longer just a scaffold:
-- Fire TV control works through ADB over TCP
-- the desktop app can save local configuration
-- the UI can test Fire TV connection and send remote actions
-- Spotify OAuth and Spotify Connect integration are implemented in the core
-- Spotify auth completes automatically through a localhost callback
-- Fire TV apps can be scanned, cached, and launched from the app
-- bindings, tray actions, and global hotkeys are implemented
+The core flow is:
 
-## Current Status
+`Wake TV -> open Spotify on Fire TV -> detect target -> transfer or toggle playback`
 
-Implemented now:
-- Tauri desktop app with a working TypeScript frontend and Rust backend
-- persistent local app config
-- Fire TV ADB connection checks
-- Fire TV wake / screen-state detection
-- Fire TV app launch for Spotify TV
-- Fire TV manual navigation and media key events
-- Fire TV app scanning and local app cache
-- Spotify configuration, token cache, auth URL generation, and TV-target matching by hints
-- Spotify toggle logic for pause / resume / transfer to TV
-- one-shot `Start Spotify On TV` flow
-- persistent bindings for reusable actions
-- system tray behavior
-- global hotkeys
+This is no longer a scaffold. The app now has a working Tauri desktop shell, a modularized TypeScript frontend, a Rust backend, persistent local settings, tray integration, reusable bindings, and global hotkeys.
 
-Not implemented yet:
-- production-grade error handling and tests
-- richer Fire TV app metadata
-- editing and management polish beyond the current bindings UI
+## What Works Today
+
+- Fire TV control over ADB over TCP
+- persistent local app configuration
+- Fire TV connection checks and wake flow
+- Fire TV remote actions and media keys
+- Fire TV app scan, cache, filter, and launch
+- Spotify OAuth with localhost callback
+- Spotify token cache and target-device matching by hints
+- `Start Spotify on TV` end-to-end flow
+- Spotify playback toggle and transfer logic
+- reusable bindings with optional global hotkeys
+- tray actions and tray-resident behavior
+- Home dashboard with Quick Access, Shortcuts, readiness, recent activity, and device snapshot
+
+## Current UI Model
+
+The app is organized as a compact desktop utility, not a web dashboard.
+
+Navigation:
+
+- `Home`
+- `Playback`
+  - `Spotify`
+  - `Quick Access`
+  - `Hotkeys`
+- `Fire TV`
+  - `ADB & Device`
+  - `Apps`
+  - `Remote`
+- `System`
+  - `Health`
+  - `General`
+
+Highlights:
+
+- `Home` is the primary control surface
+- `Quick Access` shows favorite bindings used on Home
+- `Hotkeys` is focused on creating bindings first, with registered bindings as a secondary list
+- `Spotify` is centered around the active session and playback controls
+- `Health` and `General` use compact utility-style panels instead of dashboard cards
 
 ## Tech Stack
 
 - Rust workspace for backend and shared logic
 - Tauri v2 for the desktop shell
-- TypeScript + Vite for the frontend UI
+- TypeScript + Vite for the frontend
+- Lucide for iconography
 - ADB over TCP for Fire TV communication
 - Spotify Web API through `rspotify`
 
@@ -48,21 +66,35 @@ Not implemented yet:
 - `crates/core`
   Shared application logic
 - `crates/core/src/config`
-  Persistent config model and local storage path helpers
+  Persistent config model and local storage helpers
 - `crates/core/src/firetv`
-  Fire TV ADB integration, connection, wake, status, and remote actions
+  Fire TV ADB integration, wake logic, status, remote actions, and app scanning
 - `crates/core/src/spotify`
-  Spotify OAuth, token cache, device lookup, and playback toggle logic
+  Spotify OAuth, token cache, target matching, playback transfer, and toggle logic
 - `crates/core/src/bindings.rs`
   Persistent bindings and reusable action execution
 - `apps/tauri`
   Frontend app and Tauri shell
-- `apps/tauri/src`
-  TypeScript UI
+- `apps/tauri/src/api.ts`
+  Frontend wrappers around Tauri commands
+- `apps/tauri/src/state.ts`
+  Shared frontend app state
+- `apps/tauri/src/types.ts`
+  Frontend types
+- `apps/tauri/src/utils.ts`
+  Small formatting and helper utilities
+- `apps/tauri/src/features`
+  Derived UI/domain logic such as bindings and readiness/status helpers
+- `apps/tauri/src/pages`
+  Page renderers for Home, Spotify, Quick Access, Hotkeys, Fire TV views, Health, and General
+- `apps/tauri/src/ui`
+  Shared layout and reusable UI helpers
+- `apps/tauri/src/main.ts`
+  Frontend bootstrap, root render, event wiring, and async actions
 - `apps/tauri/src-tauri`
   Tauri commands and native desktop entrypoint
 
-## How To Launch
+## Running The App
 
 From the Tauri app directory:
 
@@ -77,11 +109,6 @@ From the repository root:
 cd C:\Users\akuma\repos\desk-remote
 .\launch.ps1
 ```
-
-This launches:
-- the Vite dev server
-- the Rust/Tauri backend
-- the shared `crates/core` code through the Tauri app
 
 Useful validation commands:
 
@@ -108,12 +135,13 @@ cd C:\Users\akuma\repos\desk-remote\apps\tauri
 
 ## Spotify Setup
 
-You need a Spotify app in the Spotify Developer Dashboard.
+Create a Spotify app in the Spotify Developer Dashboard.
 
-Required config fields in the app UI:
-- Spotify Client ID
-- Spotify Client Secret
-- Spotify Redirect URL
+Required values in Desk Remote:
+
+- `Spotify Client ID`
+- `Spotify Client Secret`
+- `Spotify Redirect URL`
 
 Recommended redirect URL:
 
@@ -121,113 +149,88 @@ Recommended redirect URL:
 http://127.0.0.1:8888/callback
 ```
 
-That exact redirect URL must also be registered in the Spotify Developer Dashboard.
+That exact URL must also be registered in the Spotify Developer Dashboard.
 
 ## Fire TV Setup
 
 On the TV:
+
 - enable Developer Options
 - enable ADB debugging
 - make sure the device is reachable on the local network
 - accept the first ADB authorization prompt on the TV
 
 In Desk Remote:
+
 - enter the Fire TV IP
-- use `Test Fire TV connection`
+- use `Test connection`
 - use `Connect` or `Wake if asleep`
 
-## What The App Can Do Right Now
+## Bindings, Quick Access, Tray, And Hotkeys
 
-Fire TV:
-- connect to the TV over ADB
-- detect whether the screen appears awake
-- wake the TV if asleep
-- launch Spotify on the TV
-- send `Home`, `Back`, directional controls, `Select`, and `Play/Pause`
+Bindings are the reusable unit behind Quick Access, tray actions, and global hotkeys.
 
-Spotify:
-- generate the Spotify authorization URL
-- open the browser automatically from the desktop app
-- listen for the localhost callback
-- cache the Spotify token locally
-- find the TV target device using configurable name hints
-- pause if Spotify is already playing on the TV
-- resume if Spotify is paused on the TV
-- transfer playback if Spotify is active on another device
+Supported binding actions:
 
-App launcher and automation:
-- scan installed Fire TV apps and cache them locally
-- launch cached Fire TV apps from the UI
-- create reusable bindings for:
-  - `start_spotify_on_tv`
-  - `spotify_toggle_tv`
-  - `fire_tv_key`
-  - `launch_app`
-- run bindings manually from the UI
-- trigger bindings from the system tray
-- assign global hotkeys to bindings
+- `start_spotify_on_tv`
+- `spotify_toggle_tv`
+- `fire_tv_key`
+- `launch_app`
 
-## Tray And Hotkeys
+Notes:
 
-The desktop app now stays alive in the tray when you close the window.
-
-Tray menu:
-- `Show Desk Remote`
-- `Start Spotify On TV`
-- `Run First Binding`
-- `Quit`
-
-Global hotkeys are registered from the bindings list while the app is running.
+- a binding can be marked as favorite to appear in Quick Access on Home
+- a binding can have a global hotkey, or no hotkey at all
+- the UI includes `Record hotkey`
+- if a hotkey fails to register, Windows or another app may already be using it
 
 Example bindings:
+
 - Label: `Watch Spotify on TV`
   Hotkey: `Alt+L`
   Action type: `start_spotify_on_tv`
-- Label: `Spotify toggle`
-  Hotkey: `Alt+P`
-  Action type: `spotify_toggle_tv`
 - Label: `TV Home`
   Hotkey: `Alt+H`
   Action type: `fire_tv_key`
   Action value: `home`
+- Label: `Open Netflix`
+  Hotkey: `Alt+N`
+  Action type: `launch_app`
 
-Notes:
-- Leave `Hotkey` empty if a binding is only for manual execution or tray use.
-- The UI includes `Record hotkey` to capture a shortcut directly.
-- If a shortcut fails to register, try another one because Windows or another app may already be using it.
+Tray behavior:
 
-## Bindings UI
-
-Bindings now use a guided form:
-- `Action type` is a dropdown
-- `Action value` only appears when required
-- `fire_tv_key` uses a fixed action dropdown
-- `launch_app` uses cached Fire TV apps as options
-- existing bindings can be edited from the list
+- closing the window hides the app instead of quitting
+- the app stays available in the tray
+- tray actions can trigger bindings and reopen the app
 
 ## Local Data
 
 The app stores local files under the app data directory:
+
 - app config JSON
 - Spotify token cache JSON
 - Fire TV app cache JSON
 - bindings JSON
 
-On Windows this is resolved from `%APPDATA%\\Desk Remote`.
+On Windows this resolves from:
 
-## Known Issues / Notes
+```text
+%APPDATA%\Desk Remote
+```
 
-- Windows Defender / App Control may block locally built `tauri.exe`. If that happens, the project can still compile, but the desktop app will not launch until the policy is relaxed.
-- `cargo run` from the workspace root is not the intended developer workflow. Use `pnpm tauri dev` from `apps/tauri`.
-- Product naming and Tauri window metadata are still scaffold-level in some config files.
-- Fire TV app scanning currently prioritizes useful launching behavior over rich metadata, so names are still inferred from package names in some cases.
+## Known Notes
 
-## Near-Term Roadmap
+- Windows Defender or App Control may block locally built `tauri.exe`
+- `cargo run` from the workspace root is not the intended dev workflow
+- some Tauri metadata is still scaffold-level and can be cleaned up later
+- Fire TV app scan currently prioritizes useful launching behavior over rich metadata
 
+## Near-Term Focus
+
+- continue splitting frontend controller logic out of `main.ts`
+- improve the remaining secondary pages so they match the Home quality bar
 - improve Fire TV app metadata and launcher discovery
-- keep polishing the bindings editor UX
-- add stronger error reporting and diagnostics
-- add tests for config, bindings, Fire TV parsing, and Spotify decision logic
+- strengthen diagnostics, tests, and error handling
 
 ## License
 
