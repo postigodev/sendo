@@ -9,7 +9,13 @@ use rspotify::{
 };
 use serde::Serialize;
 use std::{fs, path::PathBuf};
-use tokio::time::{sleep, Duration};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::TcpListener,
+    time::{sleep, timeout, Duration},
+};
+
+const AUTH_CALLBACK_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SpotifyNowPlaying {
@@ -239,12 +245,7 @@ pub async fn finish_auth_via_local_callback(config: &AppConfig) -> Result<Spotif
     let socket_addr = spotify
         .get_socket_address(&config.spotify_redirect_url)
         .ok_or_else(|| anyhow!("Spotify redirect URL must be an HTTP loopback URL with a port"))?;
-    let listener_client = build_spotify(config)?;
-
-    let code = tokio::task::spawn_blocking(move || listener_client.get_authcode_listener(socket_addr))
-        .await
-        .context("Spotify callback listener task failed")?
-        .context("failed to receive Spotify callback through localhost listener")?;
+    let code = receive_auth_code_from_local_callback(&spotify, socket_addr, AUTH_CALLBACK_TIMEOUT).await?;
 
     spotify
         .request_token(&code)
@@ -720,6 +721,53 @@ async fn exchange_callback_or_code(spotify: &AuthCodeSpotify, code_or_callback: 
         .context("failed to exchange Spotify authorization code for a token")?;
 
     Ok(())
+}
+
+async fn receive_auth_code_from_local_callback(
+    spotify: &AuthCodeSpotify,
+    socket_addr: std::net::SocketAddr,
+    wait_timeout: Duration,
+) -> Result<String> {
+    let listener = TcpListener::bind(socket_addr)
+        .await
+        .with_context(|| format!("failed to bind Spotify callback listener at {socket_addr}"))?;
+    let (mut stream, _) = timeout(wait_timeout, listener.accept())
+        .await
+        .context(
+            "Timed out waiting for Spotify login callback. Try Authenticate again or use Manual callback fallback.",
+        )?
+        .context("failed to receive Spotify callback through localhost listener")?;
+
+    let mut reader = BufReader::new(&mut stream);
+    let mut request_line = String::new();
+    reader
+        .read_line(&mut request_line)
+        .await
+        .context("failed to read Spotify callback request")?;
+
+    let redirect_path = request_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| anyhow!("Spotify callback request was malformed"))?;
+    let redirect_full_url = format!("{}{}", spotify.get_oauth().redirect_uri, redirect_path);
+
+    let response_body = match spotify.parse_response_code(&redirect_full_url) {
+        Some(_) => "Spotify login complete. You can return to Desk Remote.",
+        None => "Spotify login failed to validate. Return to Desk Remote and try again.",
+    };
+    let response = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: {}\r\n\r\n{}",
+        response_body.len(),
+        response_body
+    );
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .context("failed to send Spotify callback response")?;
+
+    spotify
+        .parse_response_code(&redirect_full_url)
+        .ok_or_else(|| anyhow!("failed to parse Spotify callback URL or validate its state"))
 }
 
 fn token_cache_path() -> Result<PathBuf> {

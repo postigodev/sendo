@@ -58,6 +58,7 @@ let {
   sidebarIndicatorVisible,
   recentActivity,
   spotifyTargetPickerOpen,
+  spotifyAuthFlowActive,
   spotifyPollingPaused,
 } = appState;
 let flashTimeoutId: number | null = null;
@@ -614,6 +615,7 @@ async function nextSpotifyTrack() {
 
 async function startSpotifyAuth() {
   syncConfigFromInputs();
+  spotifyAuthFlowActive = true;
   busy = true;
   flash("Starting Spotify auth...");
   render();
@@ -630,10 +632,12 @@ async function startSpotifyAuth() {
     busy = false;
     flash("Spotify authentication completed.");
     addActivity("Spotify authentication completed.", "success");
-    render();
   } catch (error) {
-    busy = false;
     flash(asMessage(error), true);
+    addActivity(asMessage(error), "error");
+  } finally {
+    spotifyAuthFlowActive = false;
+    busy = false;
     render();
   }
 }
@@ -659,6 +663,7 @@ async function inspectSpotifyAuth() {
 async function finishSpotifyAuth() {
   syncConfigFromInputs();
   spotifyCallbackInput = document.querySelector<HTMLInputElement>("#spotify-callback-input")?.value.trim() ?? spotifyCallbackInput;
+  spotifyAuthFlowActive = true;
   busy = true;
   flash("Finishing Spotify auth...");
   render();
@@ -669,10 +674,12 @@ async function finishSpotifyAuth() {
     busy = false;
     flash("Spotify authentication completed.");
     addActivity("Spotify authentication completed.", "success");
-    render();
   } catch (error) {
-    busy = false;
     flash(asMessage(error), true);
+    addActivity(asMessage(error), "error");
+  } finally {
+    spotifyAuthFlowActive = false;
+    busy = false;
     render();
   }
 }
@@ -724,12 +731,12 @@ async function setSpotifyTargetDevice(targetId: string) {
 }
 
 async function pollSpotifyStatus() {
-  if (spotifyPollInFlight || currentView !== "spotify" || spotifyPollingPaused) return;
+  if (spotifyPollInFlight || !shouldPollSpotify()) return;
 
   spotifyPollInFlight = true;
   try {
     currentSpotifyStatus = await api.spotifyStatus();
-    if (currentView === "spotify") {
+    if (shouldPollSpotify()) {
       render();
     }
   } catch {
@@ -740,7 +747,12 @@ async function pollSpotifyStatus() {
 }
 
 function shouldPollSpotify() {
-  return currentView === "spotify" && !spotifyPollingPaused && !spotifyTargetPickerOpen;
+  return (
+    currentView === "spotify" &&
+    !spotifyPollingPaused &&
+    !spotifyTargetPickerOpen &&
+    !spotifyAuthFlowActive
+  );
 }
 
 function syncSpotifyPolling() {
