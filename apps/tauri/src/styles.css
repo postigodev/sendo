@@ -1739,6 +1739,36 @@ input[readonly] {
   min-width: 120px;
 }
 
+.spotify-target-select {
+  width: min(100%, 240px);
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text) 90%, var(--muted));
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-align: right;
+  outline: none;
+  cursor: pointer;
+}
+
+.spotify-target-select:hover,
+.spotify-target-select:focus-visible {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--bg-3) 84%, transparent);
+}
+
+.spotify-target-select.is-ambiguous {
+  color: var(--warn);
+}
+
+.spotify-target-select:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
 .spotify-inline-status {
   color: var(--muted);
   font-size: 0.88rem;

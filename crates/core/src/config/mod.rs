@@ -12,6 +12,7 @@ pub struct AppConfig {
     pub spotify_client_id: String,
     pub spotify_client_secret: String,
     pub spotify_redirect_url: String,
+    pub spotify_selected_device_id: String,
     pub spotify_target_hints: String,
     pub spotify_auth_state: String,
 }

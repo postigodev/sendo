@@ -274,6 +274,10 @@ function bindEvents() {
   document.querySelector("#spotify-send-to-tv-button")?.addEventListener("click", () => void transferSpotifyToTv());
   document.querySelector("#spotify-previous-button")?.addEventListener("click", () => void previousSpotifyTrack());
   document.querySelector("#spotify-next-button")?.addEventListener("click", () => void nextSpotifyTrack());
+  document.querySelector<HTMLSelectElement>("#spotify-target-device-select")?.addEventListener("change", (event) => {
+    const targetId = (event.currentTarget as HTMLSelectElement).value.trim();
+    void setSpotifyTargetDevice(targetId);
+  });
   document.querySelectorAll<HTMLButtonElement>(".spotify-inline-action").forEach((button) =>
     button.addEventListener("click", () => {
       const action = button.dataset.spotifyInline;
@@ -676,6 +680,32 @@ async function refreshSpotifyStatus(message = "Spotify status refreshed.") {
   }
 }
 
+async function setSpotifyTargetDevice(targetId: string) {
+  syncConfigFromInputs();
+  currentConfig = {
+    ...currentConfig,
+    spotify_selected_device_id: targetId,
+  };
+  busy = true;
+  flash("Saving Spotify target...");
+  render();
+  try {
+    await persistCurrentConfig();
+    currentSpotifyStatus = await api.spotifyStatus();
+    currentHealth = await api.healthCheck();
+    busy = false;
+    const selectedName = currentSpotifyStatus?.target_name ?? "selected Spotify target";
+    flash(targetId ? `Spotify target set to ${selectedName}.` : "Spotify target cleared.");
+    addActivity(targetId ? `Spotify target set to ${selectedName}.` : "Spotify target cleared.", "info");
+    render();
+  } catch (error) {
+    busy = false;
+    flash(asMessage(error), true);
+    addActivity(asMessage(error), "error");
+    render();
+  }
+}
+
 async function pollSpotifyStatus() {
   if (spotifyPollInFlight || currentView !== "spotify" || spotifyPollingPaused) return;
 
@@ -919,6 +949,9 @@ function syncConfigFromInputs() {
     spotify_client_id: document.querySelector<HTMLInputElement>("#spotify-client-id")?.value.trim() ?? currentConfig.spotify_client_id,
     spotify_client_secret: document.querySelector<HTMLInputElement>("#spotify-client-secret")?.value.trim() ?? currentConfig.spotify_client_secret,
     spotify_redirect_url: document.querySelector<HTMLInputElement>("#spotify-redirect-url")?.value.trim() ?? currentConfig.spotify_redirect_url,
+    spotify_selected_device_id:
+      document.querySelector<HTMLInputElement>("#spotify-selected-device-id")?.value.trim() ??
+      currentConfig.spotify_selected_device_id,
     spotify_target_hints: document.querySelector<HTMLInputElement>("#spotify-target-hints")?.value.trim() ?? currentConfig.spotify_target_hints,
     spotify_auth_state: currentConfig.spotify_auth_state,
   };

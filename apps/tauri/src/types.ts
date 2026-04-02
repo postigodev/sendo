@@ -3,6 +3,7 @@ export type AppConfig = {
   spotify_client_id: string;
   spotify_client_secret: string;
   spotify_redirect_url: string;
+  spotify_selected_device_id: string;
   spotify_target_hints: string;
   spotify_auth_state: string;
 };
@@ -57,12 +58,23 @@ export type SpotifyStatus = {
   target_found: boolean;
   target_id: string | null;
   target_name: string | null;
+  target_ambiguous: boolean;
+  available_devices: SpotifyDevice[];
   playback_on_target: boolean;
   playback_device_name: string | null;
   now_playing: SpotifyNowPlaying | null;
   summary: string;
   auth_url: string | null;
   token_cache_path: string;
+};
+
+export type SpotifyDevice = {
+  id: string | null;
+  name: string;
+  is_active: boolean;
+  is_restricted: boolean;
+  is_selected_target: boolean;
+  matches_hints: boolean;
 };
 
 export type SpotifyNowPlaying = {

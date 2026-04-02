@@ -32,7 +32,11 @@ export function renderSpotify({
     .slice(0, 4);
   const lastSpotifyActivity = activity[0] ?? null;
   const authTone = currentSpotifyStatus?.authenticated ? "ready" : "error";
-  const targetTone = currentSpotifyStatus?.target_found ? "neutral" : "warning";
+  const targetTone = currentSpotifyStatus?.target_found
+    ? "neutral"
+    : currentSpotifyStatus?.target_ambiguous
+      ? "warning"
+      : "warning";
   const redirectTone = currentConfig.spotify_redirect_url.trim() ? "ready" : "warning";
   const nowPlaying = currentSpotifyStatus?.now_playing ?? null;
   const playbackTone = currentSpotifyStatus?.playback_on_target
@@ -43,6 +47,9 @@ export function renderSpotify({
       ? "warning"
       : "error";
   const targetStatus = currentSpotifyStatus?.target_found ? targetState : "Missing";
+  const devices = currentSpotifyStatus?.available_devices ?? [];
+  const selectedTargetId = currentSpotifyStatus?.target_id ?? currentConfig.spotify_selected_device_id.trim();
+  const targetSelectDisabled = busy || !currentSpotifyStatus?.authenticated || devices.length === 0;
   const playbackStatus = currentSpotifyStatus?.playback_on_target
     ? nowPlaying?.is_playing
       ? "Active"
@@ -161,7 +168,31 @@ export function renderSpotify({
           <div class="panel-header"><div><p class="panel-kicker">Session</p><h2>Playback and device</h2></div></div>
           <div class="spotify-status-list">
             ${spotifyStatusRow("Playback", playbackStatus, "play", playbackTone)}
-            ${spotifyStatusRow("Target", targetStatus, "tv", targetTone)}
+            <article class="spotify-status-row ${targetTone}">
+              <div class="spotify-status-leading"><span class="spotify-status-icon">${icon("tv")}</span><h3>Target</h3></div>
+              <div class="spotify-status-side">
+                ${
+                  currentSpotifyStatus?.authenticated && devices.length
+                    ? `<select class="spotify-target-select ${currentSpotifyStatus?.target_ambiguous ? "is-ambiguous" : ""}" id="spotify-target-device-select" ${targetSelectDisabled ? "disabled" : ""} aria-label="Spotify playback target">
+                        ${
+                          currentSpotifyStatus?.target_ambiguous && !selectedTargetId
+                            ? `<option value="">Select a TV target</option>`
+                            : ""
+                        }
+                        ${devices
+                          .filter((device) => device.id)
+                          .map((device) => {
+                            const id = device.id ?? "";
+                            const activeLabel = device.is_active ? " · active" : "";
+                            const hintLabel = device.matches_hints ? " · hint match" : "";
+                            return `<option value="${escapeHtml(id)}" ${id === selectedTargetId ? "selected" : ""}>${escapeHtml(device.name)}${escapeHtml(activeLabel)}${escapeHtml(hintLabel)}</option>`;
+                          })
+                          .join("")}
+                      </select>`
+                    : `<span class="spotify-inline-status ${targetTone}">${escapeHtml(targetStatus)}</span>`
+                }
+              </div>
+            </article>
             ${spotifyStatusRow("Authentication", authStatus, "key-round", authTone)}
           </div>
         </aside>
@@ -193,6 +224,11 @@ export function renderSpotify({
             ${settingsField("spotify-client-id", "Client ID", currentConfig.spotify_client_id, "your-client-id")}
             ${settingsField("spotify-client-secret", "Client secret", currentConfig.spotify_client_secret, "your-client-secret")}
             ${settingsField("spotify-redirect-url", "Redirect URL", currentConfig.spotify_redirect_url, "http://127.0.0.1:8888/callback")}
+            ${
+              currentConfig.spotify_selected_device_id.trim()
+                ? `${settingsField("spotify-selected-device-id", "Selected device ID", currentConfig.spotify_selected_device_id, "Pick a Spotify target above", { readOnly: true, mono: true })}`
+                : ""
+            }
             ${settingsField("spotify-target-hints", "Target hints", currentConfig.spotify_target_hints, "fire, tv, amazon")}
             <div class="spotify-form-footer">
               <p class="meta">Stored locally for Spotify Connect authentication and target matching.</p>

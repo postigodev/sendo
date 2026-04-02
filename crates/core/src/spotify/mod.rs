@@ -29,6 +29,8 @@ pub struct SpotifyStatus {
     pub target_found: bool,
     pub target_id: Option<String>,
     pub target_name: Option<String>,
+    pub target_ambiguous: bool,
+    pub available_devices: Vec<SpotifyDevice>,
     pub playback_on_target: bool,
     pub playback_device_name: Option<String>,
     pub now_playing: Option<SpotifyNowPlaying>,
@@ -37,11 +39,33 @@ pub struct SpotifyStatus {
     pub token_cache_path: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SpotifyDevice {
+    pub id: Option<String>,
+    pub name: String,
+    pub is_active: bool,
+    pub is_restricted: bool,
+    pub is_selected_target: bool,
+    pub matches_hints: bool,
+}
+
 #[derive(Debug, Clone)]
 struct PlaybackSnapshot {
     device_id: Option<String>,
     device_name: Option<String>,
     now_playing: Option<SpotifyNowPlaying>,
+}
+
+#[derive(Debug, Clone)]
+struct TargetDevice {
+    id: String,
+    name: String,
+}
+
+#[derive(Debug, Clone)]
+struct TargetResolution {
+    device: Option<TargetDevice>,
+    ambiguous: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,6 +93,8 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
             target_found: false,
             target_id: None,
             target_name: None,
+            target_ambiguous: false,
+            available_devices: vec![],
             playback_on_target: false,
             playback_device_name: None,
             now_playing: None,
@@ -91,6 +117,8 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
             target_found: false,
             target_id: None,
             target_name: None,
+            target_ambiguous: false,
+            available_devices: vec![],
             playback_on_target: false,
             playback_device_name: None,
             now_playing: None,
@@ -100,13 +128,16 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
         });
     }
 
-    let target = find_target_device(&spotify, &config.spotify_target_hint_list()).await?;
+    let available_devices = fetch_available_devices(&spotify, &config.spotify_target_hint_list()).await?;
+    let target_resolution = resolve_target_device(config, &available_devices);
     let playback = fetch_playback_snapshot(&spotify)
         .await
         .context("failed to fetch Spotify now playing state")?;
-    let (target_found, target_id, target_name, playback_on_target, now_playing, summary) = if let Some(device) = target {
-        let name = device.name;
-        let id = device.id.as_ref().map(|value| value.to_string());
+    let (target_found, target_id, target_name, playback_on_target, now_playing, summary) = if let Some(device) =
+        target_resolution.device.as_ref()
+    {
+        let name = device.name.clone();
+        let id = Some(device.id.clone());
         let playback_on_target = id
             .as_deref()
             .zip(playback.device_id.as_deref())
@@ -127,7 +158,11 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
             None,
             false,
             None,
-            "Spotify authenticated, but no target TV device matched the configured hints".into(),
+            if target_resolution.ambiguous {
+                "Multiple Spotify TV targets match your hints. Select one manually.".into()
+            } else {
+                "Spotify authenticated, but no target TV device matched the configured hints".into()
+            },
         )
     };
 
@@ -137,6 +172,8 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
         target_found,
         target_id,
         target_name,
+        target_ambiguous: target_resolution.ambiguous,
+        available_devices: mark_selected_devices(available_devices, target_resolution.device.as_ref()),
         playback_on_target,
         playback_device_name: playback.device_name,
         now_playing,
@@ -241,15 +278,8 @@ pub async fn toggle_on_tv(config: &AppConfig) -> Result<String> {
     let spotify = build_spotify(config)?;
     ensure_token(&spotify).await?;
 
-    let target = find_target_device(&spotify, &config.spotify_target_hint_list())
-        .await?
-        .ok_or_else(|| anyhow!("TV device not found in Spotify Connect devices"))?;
-
-    let target_id = target
-        .id
-        .clone()
-        .ok_or_else(|| anyhow!("Target Spotify device found but has no device ID"))?
-        .to_string();
+    let target = resolve_control_target(config, &spotify).await?;
+    let target_id = target.id.clone();
     let target_name = target.name.clone();
 
     let playback = spotify
@@ -296,15 +326,8 @@ pub async fn transfer_to_tv(config: &AppConfig) -> Result<String> {
     let spotify = build_spotify(config)?;
     ensure_token(&spotify).await?;
 
-    let target = find_target_device(&spotify, &config.spotify_target_hint_list())
-        .await?
-        .ok_or_else(|| anyhow!("TV device not found in Spotify Connect devices"))?;
-
-    let target_id = target
-        .id
-        .clone()
-        .ok_or_else(|| anyhow!("Target Spotify device found but has no device ID"))?
-        .to_string();
+    let target = resolve_control_target(config, &spotify).await?;
+    let target_id = target.id.clone();
     let target_name = target.name.clone();
 
     spotify
@@ -325,14 +348,8 @@ pub async fn toggle_playback(config: &AppConfig) -> Result<String> {
     let spotify = build_spotify(config)?;
     ensure_token(&spotify).await?;
 
-    let target = find_target_device(&spotify, &config.spotify_target_hint_list())
-        .await?
-        .ok_or_else(|| anyhow!("TV device not found in Spotify Connect devices"))?;
-    let target_id = target
-        .id
-        .clone()
-        .ok_or_else(|| anyhow!("Target Spotify device found but has no device ID"))?
-        .to_string();
+    let target = resolve_control_target(config, &spotify).await?;
+    let target_id = target.id.clone();
     let target_name = target.name.clone();
 
     let playback = spotify
@@ -368,14 +385,8 @@ pub async fn skip_next(config: &AppConfig) -> Result<String> {
 
     let spotify = build_spotify(config)?;
     ensure_token(&spotify).await?;
-    let target = find_target_device(&spotify, &config.spotify_target_hint_list())
-        .await?
-        .ok_or_else(|| anyhow!("TV device not found in Spotify Connect devices"))?;
-    let target_id = target
-        .id
-        .clone()
-        .ok_or_else(|| anyhow!("Target Spotify device found but has no device ID"))?
-        .to_string();
+    let target = resolve_control_target(config, &spotify).await?;
+    let target_id = target.id.clone();
     spotify
         .next_track(Some(target_id.as_str()))
         .await
@@ -390,14 +401,8 @@ pub async fn skip_previous(config: &AppConfig) -> Result<String> {
 
     let spotify = build_spotify(config)?;
     ensure_token(&spotify).await?;
-    let target = find_target_device(&spotify, &config.spotify_target_hint_list())
-        .await?
-        .ok_or_else(|| anyhow!("TV device not found in Spotify Connect devices"))?;
-    let target_id = target
-        .id
-        .clone()
-        .ok_or_else(|| anyhow!("Target Spotify device found but has no device ID"))?
-        .to_string();
+    let target = resolve_control_target(config, &spotify).await?;
+    let target_id = target.id.clone();
     spotify
         .previous_track(Some(target_id.as_str()))
         .await
@@ -491,14 +496,16 @@ async fn ensure_token(spotify: &AuthCodeSpotify) -> Result<()> {
     Ok(())
 }
 
-async fn find_target_device(
-    spotify: &AuthCodeSpotify,
-    hints: &[String],
-) -> Result<Option<rspotify::model::Device>> {
+async fn resolve_control_target(config: &AppConfig, spotify: &AuthCodeSpotify) -> Result<TargetDevice> {
     for attempt in 0..5 {
-        let devices = spotify.device().await.context("failed to fetch Spotify devices")?;
-        if let Some(device) = devices.into_iter().find(|device| device_matches(device, hints)) {
-            return Ok(Some(device));
+        let available_devices = fetch_available_devices(spotify, &config.spotify_target_hint_list()).await?;
+        let resolution = resolve_target_device(config, &available_devices);
+        if let Some(device) = resolution.device {
+            return Ok(device);
+        }
+
+        if resolution.ambiguous {
+            bail!("Multiple Spotify TV targets match your hints. Select one manually.");
         }
 
         if attempt < 4 {
@@ -506,7 +513,73 @@ async fn find_target_device(
         }
     }
 
-    Ok(None)
+    bail!("TV device not found in Spotify Connect devices");
+}
+
+async fn fetch_available_devices(
+    spotify: &AuthCodeSpotify,
+    hints: &[String],
+) -> Result<Vec<SpotifyDevice>> {
+    let devices = spotify.device().await.context("failed to fetch Spotify devices")?;
+    Ok(devices
+        .into_iter()
+        .map(|device| SpotifyDevice {
+            id: device.id.as_ref().map(|value| value.to_string()),
+            name: device.name.clone(),
+            is_active: device.is_active,
+            is_restricted: device.is_restricted,
+            is_selected_target: false,
+            matches_hints: device_matches(&device, hints),
+        })
+        .collect())
+}
+
+fn resolve_target_device(config: &AppConfig, devices: &[SpotifyDevice]) -> TargetResolution {
+    let selected_id = config.spotify_selected_device_id.trim();
+
+    if !selected_id.is_empty() {
+        if let Some(device) = devices.iter().find(|device| device.id.as_deref() == Some(selected_id)) {
+            if let Some(id) = device.id.clone() {
+                return TargetResolution {
+                    device: Some(TargetDevice {
+                        id,
+                        name: device.name.clone(),
+                    }),
+                    ambiguous: false,
+                };
+            }
+        }
+    }
+
+    let matched_devices = devices
+        .iter()
+        .filter(|device| device.matches_hints)
+        .filter_map(|device| {
+            device.id.as_ref().map(|id| TargetDevice {
+                id: id.clone(),
+                name: device.name.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    TargetResolution {
+        device: matched_devices.first().cloned().filter(|_| matched_devices.len() == 1),
+        ambiguous: matched_devices.len() > 1,
+    }
+}
+
+fn mark_selected_devices(
+    devices: Vec<SpotifyDevice>,
+    target: Option<&TargetDevice>,
+) -> Vec<SpotifyDevice> {
+    let selected_id = target.map(|device| device.id.as_str());
+    devices
+        .into_iter()
+        .map(|device| SpotifyDevice {
+            is_selected_target: device.id.as_deref().zip(selected_id).is_some_and(|(id, target_id)| id == target_id),
+            ..device
+        })
+        .collect()
 }
 
 async fn fetch_playback_snapshot(spotify: &AuthCodeSpotify) -> Result<PlaybackSnapshot> {

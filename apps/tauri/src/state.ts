@@ -15,6 +15,7 @@ export const defaultConfig: AppConfig = {
   spotify_client_id: "",
   spotify_client_secret: "",
   spotify_redirect_url: "",
+  spotify_selected_device_id: "",
   spotify_target_hints: "fire, tv, amazon, spotify, insignia, toshiba, osint",
   spotify_auth_state: "",
 };
