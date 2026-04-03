@@ -16,6 +16,7 @@ import {
 } from "./features/bindings";
 import { deriveIssues, readinessRows, screenLabel, sectionLabel, titleForView } from "./features/status";
 import { renderView } from "./pages";
+import { renderSpotifySessionLayout } from "./pages/spotify";
 import { appState } from "./state";
 import type { Activity, Binding, BindingAction, FireTvAction, ViewId } from "./types";
 import { renderAppShell } from "./ui/layout";
@@ -274,22 +275,7 @@ function bindEvents() {
   document.querySelector("#spotify-start-auth-button")?.addEventListener("click", () => void startSpotifyAuth());
   document.querySelector("#spotify-debug-button")?.addEventListener("click", () => void inspectSpotifyAuth());
   document.querySelector("#spotify-finish-auth-button")?.addEventListener("click", () => void finishSpotifyAuth());
-  document.querySelector("#spotify-playback-button")?.addEventListener("click", () => void toggleSpotifyPlayback());
-  document.querySelector("#spotify-send-to-tv-button")?.addEventListener("click", () => void transferSpotifyToTv());
-  document.querySelector("#spotify-previous-button")?.addEventListener("click", () => void previousSpotifyTrack());
-  document.querySelector("#spotify-next-button")?.addEventListener("click", () => void nextSpotifyTrack());
-  document.querySelector("#spotify-target-picker-button")?.addEventListener("click", () => {
-    if (busy) return;
-    spotifyTargetPickerOpen = !spotifyTargetPickerOpen;
-    render();
-  });
-  document.querySelectorAll<HTMLButtonElement>("[data-spotify-target-id]").forEach((button) =>
-    button.addEventListener("click", () => {
-      const targetId = button.dataset.spotifyTargetId?.trim() ?? "";
-      spotifyTargetPickerOpen = false;
-      void setSpotifyTargetDevice(targetId);
-    }),
-  );
+  bindSpotifySessionEvents(document);
   document.querySelector(".workspace")?.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
     if (!spotifyTargetPickerOpen || target?.closest(".spotify-target-picker")) return;
@@ -737,7 +723,7 @@ async function pollSpotifyStatus() {
   try {
     currentSpotifyStatus = await api.spotifyStatus();
     if (shouldPollSpotify()) {
-      render();
+      patchSpotifySessionLayout();
     }
   } catch {
     // Keep polling resilient and silent.
@@ -746,9 +732,53 @@ async function pollSpotifyStatus() {
   }
 }
 
+function bindSpotifySessionEvents(scope: ParentNode) {
+  scope.querySelector("#spotify-playback-button")?.addEventListener("click", () => void toggleSpotifyPlayback());
+  scope.querySelector("#spotify-send-to-tv-button")?.addEventListener("click", () => void transferSpotifyToTv());
+  scope.querySelector("#spotify-previous-button")?.addEventListener("click", () => void previousSpotifyTrack());
+  scope.querySelector("#spotify-next-button")?.addEventListener("click", () => void nextSpotifyTrack());
+  scope.querySelector("#spotify-target-picker-button")?.addEventListener("click", () => {
+    if (busy) return;
+    spotifyTargetPickerOpen = !spotifyTargetPickerOpen;
+    render();
+  });
+  scope.querySelectorAll<HTMLButtonElement>("[data-spotify-target-id]").forEach((button) =>
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.spotifyTargetId?.trim() ?? "";
+      spotifyTargetPickerOpen = false;
+      void setSpotifyTargetDevice(targetId);
+    }),
+  );
+}
+
+function patchSpotifySessionLayout() {
+  const sessionLayout = document.querySelector<HTMLElement>("#spotify-session-layout");
+  if (!sessionLayout || currentView !== "spotify") {
+    render();
+    return;
+  }
+
+  const nextLayoutHost = document.createElement("div");
+  nextLayoutHost.innerHTML = renderSpotifySessionLayout({
+    busy,
+    currentConfig,
+    currentSpotifyStatus,
+    spotifyTargetPickerOpen,
+    recentActivity,
+  }).trim();
+  const nextLayout = nextLayoutHost.firstElementChild;
+  if (!(nextLayout instanceof HTMLElement)) return;
+
+  sessionLayout.replaceWith(nextLayout);
+  renderIcons();
+  bindSpotifySessionEvents(nextLayout);
+  syncSpotifyPolling();
+}
+
 function shouldPollSpotify() {
   return (
     currentView === "spotify" &&
+    !busy &&
     !spotifyPollingPaused &&
     !spotifyTargetPickerOpen &&
     !spotifyAuthFlowActive
