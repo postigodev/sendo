@@ -6,37 +6,50 @@ use desk_remote_core::{
     spotify::{self, SpotifyStatus},
     HealthStatus,
 };
-use tauri::command;
+use tauri::{async_runtime, command};
 
-#[command]
-pub fn get_settings() -> Result<AppConfig, String> {
-    AppConfig::load().map_err(|e| e.to_string())
+async fn run_blocking<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[command]
-pub fn save_settings(config: AppConfig) -> Result<AppConfig, String> {
-    config.save().map_err(|e| e.to_string())?;
-    Ok(config)
+pub async fn get_settings() -> Result<AppConfig, String> {
+    run_blocking(|| AppConfig::load().map_err(|e| e.to_string())).await
 }
 
 #[command]
-pub fn bindings_list() -> Result<BindingStore, String> {
-    bindings::list_bindings().map_err(|e| e.to_string())
+pub async fn save_settings(config: AppConfig) -> Result<AppConfig, String> {
+    run_blocking(move || {
+        config.save().map_err(|e| e.to_string())?;
+        Ok(config)
+    })
+    .await
 }
 
 #[command]
-pub fn bindings_save(binding: Binding) -> Result<BindingStore, String> {
-    bindings::save_binding(binding).map_err(|e| e.to_string())
+pub async fn bindings_list() -> Result<BindingStore, String> {
+    run_blocking(|| bindings::list_bindings().map_err(|e| e.to_string())).await
 }
 
 #[command]
-pub fn bindings_delete(id: String) -> Result<BindingStore, String> {
-    bindings::delete_binding(&id).map_err(|e| e.to_string())
+pub async fn bindings_save(binding: Binding) -> Result<BindingStore, String> {
+    run_blocking(move || bindings::save_binding(binding).map_err(|e| e.to_string())).await
+}
+
+#[command]
+pub async fn bindings_delete(id: String) -> Result<BindingStore, String> {
+    run_blocking(move || bindings::delete_binding(&id).map_err(|e| e.to_string())).await
 }
 
 #[command]
 pub async fn bindings_execute(id: String) -> Result<ActionResult, String> {
-    let config = AppConfig::load().map_err(|e| e.to_string())?;
+    let config = run_blocking(|| AppConfig::load().map_err(|e| e.to_string())).await?;
     let message = bindings::execute_binding(&id, &config)
         .await
         .map_err(|e| e.to_string())?;
@@ -44,53 +57,68 @@ pub async fn bindings_execute(id: String) -> Result<ActionResult, String> {
 }
 
 #[command]
-pub fn health_check() -> Result<HealthStatus, String> {
-    let config = AppConfig::load().map_err(|e| e.to_string())?;
-    let configured = config.configured_services();
-    let config_path = config_file_path().map_err(|e| e.to_string())?;
+pub async fn health_check() -> Result<HealthStatus, String> {
+    run_blocking(|| {
+        let config = AppConfig::load().map_err(|e| e.to_string())?;
+        let configured = config.configured_services();
+        let config_path = config_file_path().map_err(|e| e.to_string())?;
 
-    Ok(HealthStatus {
-        config_path: config_path.display().to_string(),
-        firetv_configured: configured.firetv_ready,
-        spotify_configured: configured.spotify_ready,
-        firetv_summary: firetv::status_summary(&config.firetv_ip),
-        spotify_summary: spotify::status_summary(
-            &config.spotify_client_id,
-            &config.spotify_client_secret,
-            &config.spotify_redirect_url,
-        ),
+        Ok(HealthStatus {
+            config_path: config_path.display().to_string(),
+            firetv_configured: configured.firetv_ready,
+            spotify_configured: configured.spotify_ready,
+            firetv_summary: firetv::status_summary(&config.firetv_ip),
+            spotify_summary: spotify::status_summary(
+                &config.spotify_client_id,
+                &config.spotify_client_secret,
+                &config.spotify_redirect_url,
+            ),
+        })
     })
+    .await
 }
 
 #[command]
-pub fn firetv_status(firetv_ip: Option<String>) -> Result<FireTvStatus, String> {
-    let ip = resolve_firetv_ip(firetv_ip)?;
-    firetv::get_status(&ip).map_err(|e| e.to_string())
+pub async fn firetv_status(firetv_ip: Option<String>) -> Result<FireTvStatus, String> {
+    run_blocking(move || {
+        let ip = resolve_firetv_ip(firetv_ip)?;
+        firetv::get_status(&ip).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[command]
-pub fn firetv_action(action: FireTvAction, firetv_ip: Option<String>) -> Result<ActionResult, String> {
-    let ip = resolve_firetv_ip(firetv_ip)?;
-    let message = firetv::perform_action(&ip, action).map_err(|e| e.to_string())?;
+pub async fn firetv_action(action: FireTvAction, firetv_ip: Option<String>) -> Result<ActionResult, String> {
+    let message = run_blocking(move || {
+        let ip = resolve_firetv_ip(firetv_ip)?;
+        firetv::perform_action(&ip, action).map_err(|e| e.to_string())
+    })
+    .await?;
 
     Ok(ActionResult { message })
 }
 
 #[command]
-pub fn firetv_cached_apps() -> Result<FireTvAppCache, String> {
-    firetv::get_cached_apps().map_err(|e| e.to_string())
+pub async fn firetv_cached_apps() -> Result<FireTvAppCache, String> {
+    run_blocking(|| firetv::get_cached_apps().map_err(|e| e.to_string())).await
 }
 
 #[command]
-pub fn firetv_scan_apps(firetv_ip: Option<String>) -> Result<FireTvAppScanResult, String> {
-    let ip = resolve_firetv_ip(firetv_ip)?;
-    firetv::scan_apps(&ip).map_err(|e| e.to_string())
+pub async fn firetv_scan_apps(firetv_ip: Option<String>) -> Result<FireTvAppScanResult, String> {
+    run_blocking(move || {
+        let ip = resolve_firetv_ip(firetv_ip)?;
+        firetv::scan_apps(&ip).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[command]
-pub fn firetv_launch_app(package_name: String, firetv_ip: Option<String>) -> Result<ActionResult, String> {
-    let ip = resolve_firetv_ip(firetv_ip)?;
-    let message = firetv::launch_app(&ip, &package_name).map_err(|e| e.to_string())?;
+pub async fn firetv_launch_app(package_name: String, firetv_ip: Option<String>) -> Result<ActionResult, String> {
+    let message = run_blocking(move || {
+        let ip = resolve_firetv_ip(firetv_ip)?;
+        firetv::launch_app(&ip, &package_name).map_err(|e| e.to_string())
+    })
+    .await?;
 
     Ok(ActionResult { message })
 }
