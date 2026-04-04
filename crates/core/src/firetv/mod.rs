@@ -3,9 +3,11 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
+    io::Read,
     path::PathBuf,
-    process::Command,
+    process::{ChildStderr, ChildStdout, Command, Stdio},
     thread,
+    thread::JoinHandle,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -412,8 +414,21 @@ fn run_adb(args: &[&str]) -> Result<String> {
 fn run_adb_with_timeout(args: &[&str], wait_timeout: Duration) -> Result<String> {
     let mut child = Command::new("adb")
         .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .with_context(|| format!("failed to execute adb {}", args.join(" ")))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .context("failed to capture adb stdout pipe")?;
+    let stderr = child
+        .stderr
+        .take()
+        .context("failed to capture adb stderr pipe")?;
+    let stdout_reader = read_adb_stdout(stdout);
+    let stderr_reader = read_adb_stderr(stderr);
 
     let start_time = Instant::now();
     loop {
@@ -438,14 +453,18 @@ fn run_adb_with_timeout(args: &[&str], wait_timeout: Duration) -> Result<String>
         thread::sleep(Duration::from_millis(50));
     }
 
-    let output = child
-        .wait_with_output()
-        .with_context(|| format!("failed to read adb {} output", args.join(" ")))?;
+    let status = child
+        .wait()
+        .with_context(|| format!("failed to wait for adb {}", args.join(" ")))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&join_adb_reader(stdout_reader, "stdout")?)
+        .trim()
+        .to_string();
+    let stderr = String::from_utf8_lossy(&join_adb_reader(stderr_reader, "stderr")?)
+        .trim()
+        .to_string();
 
-    if output.status.success() {
+    if status.success() {
         if !stdout.is_empty() {
             return Ok(stdout);
         }
@@ -461,7 +480,33 @@ fn run_adb_with_timeout(args: &[&str], wait_timeout: Duration) -> Result<String>
         bail!(stdout);
     }
 
-    bail!("adb exited with status {}", output.status);
+    bail!("adb exited with status {status}");
+}
+
+fn read_adb_stdout(mut stdout: ChildStdout) -> JoinHandle<Result<Vec<u8>>> {
+    thread::spawn(move || {
+        let mut buffer = Vec::new();
+        stdout
+            .read_to_end(&mut buffer)
+            .context("failed to read adb stdout")?;
+        Ok(buffer)
+    })
+}
+
+fn read_adb_stderr(mut stderr: ChildStderr) -> JoinHandle<Result<Vec<u8>>> {
+    thread::spawn(move || {
+        let mut buffer = Vec::new();
+        stderr
+            .read_to_end(&mut buffer)
+            .context("failed to read adb stderr")?;
+        Ok(buffer)
+    })
+}
+
+fn join_adb_reader(reader: JoinHandle<Result<Vec<u8>>>, stream_name: &str) -> Result<Vec<u8>> {
+    reader
+        .join()
+        .map_err(|_| anyhow!("adb {stream_name} reader thread panicked"))?
 }
 
 fn infer_display_name(package_name: &str) -> String {
