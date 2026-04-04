@@ -1,11 +1,13 @@
 mod commands;
 
 use desk_remote_core::{bindings, config::AppConfig, spotify};
+use std::env;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_notification::NotificationExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,9 +15,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             setup_tray(app.handle())?;
+            apply_startup_preferences(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -150,6 +157,32 @@ async fn run_first_binding(app: &AppHandle) -> anyhow::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.emit("tray-action", &first_binding.id);
     }
+    Ok(())
+}
+
+fn apply_startup_preferences(app: &AppHandle) -> tauri::Result<()> {
+    let config = AppConfig::load().unwrap_or_default();
+    let autostart_manager = app.autolaunch();
+
+    match (config.launch_on_startup, autostart_manager.is_enabled()) {
+        (true, Ok(false)) => {
+            let _ = autostart_manager.enable();
+        }
+        (false, Ok(true)) => {
+            let _ = autostart_manager.disable();
+        }
+        _ => {}
+    }
+
+    let started_from_autostart = env::args().any(|arg| arg == "--autostart");
+    if !started_from_autostart || !config.start_minimized_to_tray {
+        return Ok(());
+    }
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+
     Ok(())
 }
 

@@ -18,6 +18,8 @@ export const defaultConfig: AppConfig = {
   spotify_selected_device_id: "",
   spotify_target_hints: "fire, tv, amazon, spotify, insignia, toshiba, osint",
   spotify_auth_state: "",
+  launch_on_startup: false,
+  start_minimized_to_tray: true,
 };
 
 export const appState = {

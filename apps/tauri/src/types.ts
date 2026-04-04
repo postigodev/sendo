@@ -6,6 +6,8 @@ export type AppConfig = {
   spotify_selected_device_id: string;
   spotify_target_hints: string;
   spotify_auth_state: string;
+  launch_on_startup: boolean;
+  start_minimized_to_tray: boolean;
 };
 
 export type HealthStatus = {

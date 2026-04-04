@@ -15,6 +15,8 @@ pub struct AppConfig {
     pub spotify_selected_device_id: String,
     pub spotify_target_hints: String,
     pub spotify_auth_state: String,
+    pub launch_on_startup: bool,
+    pub start_minimized_to_tray: bool,
 }
 
 impl AppConfig {

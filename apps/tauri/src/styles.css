@@ -762,6 +762,46 @@ input[readonly] {
   gap: 20px;
 }
 
+.general-toggle-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.general-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.general-toggle-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.general-toggle-row.is-disabled {
+  opacity: 0.55;
+}
+
+.general-toggle-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.general-toggle-copy strong {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.general-toggle-copy span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
 .general-overview-block {
   display: grid;
   gap: 12px;

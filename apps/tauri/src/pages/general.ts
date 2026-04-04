@@ -1,7 +1,9 @@
+import type { AppConfig } from "../types";
 import { icon } from "../icons";
 import { snapshotRow, toolRow } from "../ui/shared";
 
 type GeneralDeps = {
+  currentConfig: AppConfig;
   packageVersion: string;
   configPath: string;
   storedBindings: number;
@@ -10,6 +12,7 @@ type GeneralDeps = {
 };
 
 export function renderGeneral({
+  currentConfig,
   packageVersion,
   configPath,
   storedBindings,
@@ -62,6 +65,35 @@ export function renderGeneral({
                   <strong>${activeHotkeys}</strong>
                 </div>
               </article>
+            </div>
+          </section>
+          <section class="general-overview-block">
+            <div class="general-overview-header">
+              <h3>Startup</h3>
+            </div>
+            <div class="general-toggle-stack">
+              <label class="general-toggle-row">
+                <div class="general-toggle-copy">
+                  <strong>Launch at startup</strong>
+                  <span>Register Sendo to start automatically when you sign in.</span>
+                </div>
+                <span class="toggle-pill ${currentConfig.launch_on_startup ? "is-on" : "is-off"}">
+                  <input id="launch-on-startup" type="checkbox" ${currentConfig.launch_on_startup ? "checked" : ""} />
+                  <span class="toggle-pill-indicator" aria-hidden="true">${icon("check")}</span>
+                  <span class="toggle-pill-label">${currentConfig.launch_on_startup ? "On" : "Off"}</span>
+                </span>
+              </label>
+              <label class="general-toggle-row ${currentConfig.launch_on_startup ? "" : "is-disabled"}">
+                <div class="general-toggle-copy">
+                  <strong>Start minimized to tray</strong>
+                  <span>When Sendo starts with Windows, keep the window hidden and leave the tray running.</span>
+                </div>
+                <span class="toggle-pill ${currentConfig.start_minimized_to_tray ? "is-on" : "is-off"}">
+                  <input id="start-minimized-to-tray" type="checkbox" ${currentConfig.start_minimized_to_tray ? "checked" : ""} ${currentConfig.launch_on_startup ? "" : "disabled"} />
+                  <span class="toggle-pill-indicator" aria-hidden="true">${icon("check")}</span>
+                  <span class="toggle-pill-label">${currentConfig.start_minimized_to_tray ? "On" : "Off"}</span>
+                </span>
+              </label>
             </div>
           </section>
         </div>

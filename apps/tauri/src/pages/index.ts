@@ -138,6 +138,7 @@ export function renderView(deps: RenderViewDeps) {
       });
     case "general":
       return renderGeneral({
+        currentConfig: deps.currentConfig,
         packageVersion: deps.packageVersion,
         configPath: deps.currentHealth?.config_path ?? "Unavailable",
         storedBindings: deps.currentBindings.length,

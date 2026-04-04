@@ -298,6 +298,26 @@ function bindEvents() {
   document.querySelector("#firetv-check-button")?.addEventListener("click", () => void refreshFireTvStatus());
   document.querySelector("#reload-button")?.addEventListener("click", () => void loadAll("Configuration reloaded from disk."));
   document.querySelector("#health-button")?.addEventListener("click", () => void refreshHealth());
+  document.querySelector<HTMLInputElement>("#launch-on-startup")?.addEventListener("change", (event) => {
+    currentConfig = {
+      ...currentConfig,
+      launch_on_startup: (event.currentTarget as HTMLInputElement).checked,
+    };
+    if (!currentConfig.launch_on_startup) {
+      currentConfig = {
+        ...currentConfig,
+        start_minimized_to_tray: false,
+      };
+    }
+    void saveSettingsFromInputs("Startup preferences saved.");
+  });
+  document.querySelector<HTMLInputElement>("#start-minimized-to-tray")?.addEventListener("change", (event) => {
+    currentConfig = {
+      ...currentConfig,
+      start_minimized_to_tray: (event.currentTarget as HTMLInputElement).checked,
+    };
+    void saveSettingsFromInputs("Startup preferences saved.");
+  });
   document.querySelector("#health-refresh-button")?.addEventListener("click", () => void refreshHealth());
   document.querySelector("#health-refresh-recovery-button")?.addEventListener("click", () => void refreshHealth());
   document.querySelector("#firetv-scan-apps-button")?.addEventListener("click", () => void scanFireTvApps());
@@ -1040,6 +1060,12 @@ function syncConfigFromInputs() {
       currentConfig.spotify_selected_device_id,
     spotify_target_hints: document.querySelector<HTMLInputElement>("#spotify-target-hints")?.value.trim() ?? currentConfig.spotify_target_hints,
     spotify_auth_state: currentConfig.spotify_auth_state,
+    launch_on_startup:
+      document.querySelector<HTMLInputElement>("#launch-on-startup")?.checked ??
+      currentConfig.launch_on_startup,
+    start_minimized_to_tray:
+      document.querySelector<HTMLInputElement>("#start-minimized-to-tray")?.checked ??
+      currentConfig.start_minimized_to_tray,
   };
 }
 

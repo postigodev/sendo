@@ -6,7 +6,8 @@ use desk_remote_core::{
     spotify::{self, SpotifyStatus},
     HealthStatus,
 };
-use tauri::{async_runtime, command};
+use tauri::{async_runtime, command, AppHandle};
+use tauri_plugin_autostart::ManagerExt;
 
 async fn run_blocking<T, F>(task: F) -> Result<T, String>
 where
@@ -24,8 +25,9 @@ pub async fn get_settings() -> Result<AppConfig, String> {
 }
 
 #[command]
-pub async fn save_settings(config: AppConfig) -> Result<AppConfig, String> {
+pub async fn save_settings(app: AppHandle, config: AppConfig) -> Result<AppConfig, String> {
     run_blocking(move || {
+        sync_autostart_setting(&app, &config).map_err(|e| e.to_string())?;
         config.save().map_err(|e| e.to_string())?;
         Ok(config)
     })
@@ -188,6 +190,19 @@ pub async fn spotify_toggle_tv() -> Result<ActionResult, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(ActionResult { message })
+}
+
+fn sync_autostart_setting(app: &AppHandle, config: &AppConfig) -> anyhow::Result<()> {
+    let autostart_manager = app.autolaunch();
+    let is_enabled = autostart_manager.is_enabled()?;
+
+    match (config.launch_on_startup, is_enabled) {
+        (true, false) => autostart_manager.enable()?,
+        (false, true) => autostart_manager.disable()?,
+        _ => {}
+    }
+
+    Ok(())
 }
 
 #[command]
