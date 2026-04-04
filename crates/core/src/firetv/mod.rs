@@ -225,7 +225,10 @@ pub fn scan_apps(ip: &str) -> Result<FireTvAppScanResult> {
         bail!("ADB could not establish a connection with {target}");
     }
 
-    let output = run_adb(&["-s", &target, "shell", "cmd", "package", "list", "packages", "-3"])?;
+    let output = run_adb_with_timeout(
+        &["-s", &target, "shell", "cmd", "package", "list", "packages", "-3"],
+        ADB_SCAN_TIMEOUT,
+    )?;
     let mut apps = output
         .lines()
         .filter_map(|line| line.strip_prefix("package:"))
