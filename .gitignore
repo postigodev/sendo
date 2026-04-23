@@ -10,6 +10,8 @@
 node_modules/
 dist/
 build/
+.next/
+out/
 
 # ===== Logs =====
 *.log
@@ -25,3 +27,6 @@ Thumbs.db
 # ===== Env =====
 .env
 .env.*
+
+# ===== Local Brainstorm Artifacts =====
+.superpowers/
