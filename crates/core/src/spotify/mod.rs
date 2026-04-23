@@ -1,11 +1,12 @@
-use crate::{config::{app_data_dir, AppConfig}, SpotifyAuthDebug};
+use crate::{
+    config::{app_data_dir, AppConfig},
+    SpotifyAuthDebug,
+};
 use anyhow::{anyhow, bail, Context, Result};
 use rand::{distr::Alphanumeric, Rng};
 use rspotify::{
-    clients::OAuthClient,
-    model::AdditionalType,
-    prelude::BaseClient,
-    scopes, AuthCodeSpotify, Config, Credentials, OAuth,
+    clients::OAuthClient, model::AdditionalType, prelude::BaseClient, scopes, AuthCodeSpotify,
+    Config, Credentials, OAuth,
 };
 use serde::Serialize;
 use std::{fs, path::PathBuf};
@@ -82,7 +83,10 @@ pub struct SpotifyAuthStart {
 }
 
 pub fn status_summary(client_id: &str, client_secret: &str, redirect_url: &str) -> String {
-    if client_id.trim().is_empty() || client_secret.trim().is_empty() || redirect_url.trim().is_empty() {
+    if client_id.trim().is_empty()
+        || client_secret.trim().is_empty()
+        || redirect_url.trim().is_empty()
+    {
         "Spotify OAuth is not configured yet".into()
     } else {
         "Spotify OAuth settings are present".into()
@@ -150,45 +154,50 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
         });
     }
 
-    let available_devices = fetch_available_devices(&spotify, &config.spotify_target_hint_list()).await?;
+    let available_devices =
+        fetch_available_devices(&spotify, &config.spotify_target_hint_list()).await?;
     let target_resolution = resolve_target_device(config, &available_devices);
     let playback = fetch_playback_snapshot(&spotify)
         .await
         .context("failed to fetch Spotify now playing state")?;
-    let (target_found, target_id, target_name, playback_on_target, now_playing, summary) = if let Some(device) =
-        target_resolution.device.as_ref()
-    {
-        let name = device.name.clone();
-        let id = Some(device.id.clone());
-        let playback_on_target = id
-            .as_deref()
-            .zip(playback.device_id.as_deref())
-            .map(|(target_id, device_id)| target_id == device_id)
-            .unwrap_or(false);
-        (
-            true,
-            id,
-            Some(name.clone()),
-            playback_on_target,
-            if playback_on_target { playback.now_playing.clone() } else { None },
-            format!("Spotify authenticated; target device found: {name}"),
-        )
-    } else {
-        (
-            false,
-            None,
-            None,
-            false,
-            None,
-            if target_resolution.selected_missing {
-                "Selected Spotify TV target is unavailable. Pick another device or open Spotify on that TV.".into()
-            } else if target_resolution.ambiguous {
-                "Multiple Spotify TV targets match your hints. Select one manually.".into()
-            } else {
-                "Spotify authenticated, but no target TV device matched the configured hints".into()
-            },
-        )
-    };
+    let (target_found, target_id, target_name, playback_on_target, now_playing, summary) =
+        if let Some(device) = target_resolution.device.as_ref() {
+            let name = device.name.clone();
+            let id = Some(device.id.clone());
+            let playback_on_target = id
+                .as_deref()
+                .zip(playback.device_id.as_deref())
+                .map(|(target_id, device_id)| target_id == device_id)
+                .unwrap_or(false);
+            (
+                true,
+                id,
+                Some(name.clone()),
+                playback_on_target,
+                if playback_on_target {
+                    playback.now_playing.clone()
+                } else {
+                    None
+                },
+                format!("Spotify authenticated; target device found: {name}"),
+            )
+        } else {
+            (
+                false,
+                None,
+                None,
+                false,
+                None,
+                if target_resolution.selected_missing {
+                    "Selected Spotify TV target is unavailable. Pick another device or open Spotify on that TV.".into()
+                } else if target_resolution.ambiguous {
+                    "Multiple Spotify TV targets match your hints. Select one manually.".into()
+                } else {
+                    "Spotify authenticated, but no target TV device matched the configured hints"
+                        .into()
+                },
+            )
+        };
 
     Ok(SpotifyStatus {
         configured: true,
@@ -197,7 +206,10 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
         target_id,
         target_name,
         target_ambiguous: target_resolution.ambiguous,
-        available_devices: mark_selected_devices(available_devices, target_resolution.device.as_ref()),
+        available_devices: mark_selected_devices(
+            available_devices,
+            target_resolution.device.as_ref(),
+        ),
         playback_on_target,
         playback_device_name: playback.device_name,
         now_playing,
@@ -260,7 +272,8 @@ pub async fn finish_auth_via_local_callback(config: &AppConfig) -> Result<Spotif
     let socket_addr = spotify
         .get_socket_address(&config.spotify_redirect_url)
         .ok_or_else(|| anyhow!("Spotify redirect URL must be an HTTP loopback URL with a port"))?;
-    let code = receive_auth_code_from_local_callback(&spotify, socket_addr, AUTH_CALLBACK_TIMEOUT).await?;
+    let code =
+        receive_auth_code_from_local_callback(&spotify, socket_addr, AUTH_CALLBACK_TIMEOUT).await?;
 
     spotify
         .request_token(&code)
@@ -306,7 +319,10 @@ pub async fn toggle_on_tv(config: &AppConfig) -> Result<String> {
         .await
         .context("failed to fetch current Spotify playback")?;
 
-    let is_playing = playback.as_ref().map(|item| item.is_playing).unwrap_or(false);
+    let is_playing = playback
+        .as_ref()
+        .map(|item| item.is_playing)
+        .unwrap_or(false);
     let current_device_id = playback
         .as_ref()
         .and_then(|item| item.device.id.as_ref().map(|id| id.to_string()));
@@ -333,7 +349,9 @@ pub async fn toggle_on_tv(config: &AppConfig) -> Result<String> {
         .context("failed to transfer Spotify playback to TV")?;
     sleep(Duration::from_millis(300)).await;
 
-    let _ = spotify.resume_playback(Some(target_id.as_str()), None).await;
+    let _ = spotify
+        .resume_playback(Some(target_id.as_str()), None)
+        .await;
     Ok(format!("Transferred Spotify playback to {target_name}"))
 }
 
@@ -354,7 +372,9 @@ pub async fn transfer_to_tv(config: &AppConfig) -> Result<String> {
         .await
         .context("failed to transfer Spotify playback to TV")?;
     sleep(Duration::from_millis(300)).await;
-    let _ = spotify.resume_playback(Some(target_id.as_str()), None).await;
+    let _ = spotify
+        .resume_playback(Some(target_id.as_str()), None)
+        .await;
 
     Ok(format!("Transferred Spotify playback to {target_name}"))
 }
@@ -376,7 +396,10 @@ pub async fn toggle_playback(config: &AppConfig) -> Result<String> {
         .await
         .context("failed to fetch current Spotify playback")?;
 
-    let is_playing = playback.as_ref().map(|item| item.is_playing).unwrap_or(false);
+    let is_playing = playback
+        .as_ref()
+        .map(|item| item.is_playing)
+        .unwrap_or(false);
     let current_device_id = playback
         .as_ref()
         .and_then(|item| item.device.id.as_ref().map(|id| id.to_string()));
@@ -515,9 +538,13 @@ async fn ensure_token(spotify: &AuthCodeSpotify) -> Result<()> {
     Ok(())
 }
 
-async fn resolve_control_target(config: &AppConfig, spotify: &AuthCodeSpotify) -> Result<TargetDevice> {
+async fn resolve_control_target(
+    config: &AppConfig,
+    spotify: &AuthCodeSpotify,
+) -> Result<TargetDevice> {
     for attempt in 0..5 {
-        let available_devices = fetch_available_devices(spotify, &config.spotify_target_hint_list()).await?;
+        let available_devices =
+            fetch_available_devices(spotify, &config.spotify_target_hint_list()).await?;
         let resolution = resolve_target_device(config, &available_devices);
         if let Some(device) = resolution.device {
             return Ok(device);
@@ -543,7 +570,10 @@ async fn fetch_available_devices(
     spotify: &AuthCodeSpotify,
     hints: &[String],
 ) -> Result<Vec<SpotifyDevice>> {
-    let devices = spotify.device().await.context("failed to fetch Spotify devices")?;
+    let devices = spotify
+        .device()
+        .await
+        .context("failed to fetch Spotify devices")?;
     Ok(devices
         .into_iter()
         .map(|device| SpotifyDevice {
@@ -561,7 +591,10 @@ fn resolve_target_device(config: &AppConfig, devices: &[SpotifyDevice]) -> Targe
     let selected_id = config.spotify_selected_device_id.trim();
 
     if !selected_id.is_empty() {
-        if let Some(device) = devices.iter().find(|device| device.id.as_deref() == Some(selected_id)) {
+        if let Some(device) = devices
+            .iter()
+            .find(|device| device.id.as_deref() == Some(selected_id))
+        {
             if let Some(id) = device.id.clone() {
                 return TargetResolution {
                     device: Some(TargetDevice {
@@ -593,7 +626,10 @@ fn resolve_target_device(config: &AppConfig, devices: &[SpotifyDevice]) -> Targe
         .collect::<Vec<_>>();
 
     TargetResolution {
-        device: matched_devices.first().cloned().filter(|_| matched_devices.len() == 1),
+        device: matched_devices
+            .first()
+            .cloned()
+            .filter(|_| matched_devices.len() == 1),
         selected_missing: false,
         ambiguous: matched_devices.len() > 1,
     }
@@ -607,7 +643,11 @@ fn mark_selected_devices(
     devices
         .into_iter()
         .map(|device| SpotifyDevice {
-            is_selected_target: device.id.as_deref().zip(selected_id).is_some_and(|(id, target_id)| id == target_id),
+            is_selected_target: device
+                .id
+                .as_deref()
+                .zip(selected_id)
+                .is_some_and(|(id, target_id)| id == target_id),
             ..device
         })
         .collect()
@@ -626,7 +666,9 @@ async fn fetch_playback_snapshot(spotify: &AuthCodeSpotify) -> Result<PlaybackSn
         });
     };
 
-    let progress_ms = playback.progress.map(|value| value.num_milliseconds().max(0) as u64);
+    let progress_ms = playback
+        .progress
+        .map(|value| value.num_milliseconds().max(0) as u64);
     let is_playing = playback.is_playing;
     let device_id = playback.device.id.as_ref().map(|value| value.to_string());
     let device_name = Some(playback.device.name.clone());
@@ -660,7 +702,11 @@ async fn fetch_playback_snapshot(spotify: &AuthCodeSpotify) -> Result<PlaybackSn
             Some(SpotifyNowPlaying {
                 is_playing,
                 track_name: Some(track.name),
-                artist_name: if artist_name.is_empty() { None } else { Some(artist_name) },
+                artist_name: if artist_name.is_empty() {
+                    None
+                } else {
+                    Some(artist_name)
+                },
                 album_name: Some(track.album.name),
                 album_cover_url,
                 progress_ms,
@@ -721,7 +767,10 @@ fn extract_auth_code(code_or_callback: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-async fn exchange_callback_or_code(spotify: &AuthCodeSpotify, code_or_callback: &str) -> Result<()> {
+async fn exchange_callback_or_code(
+    spotify: &AuthCodeSpotify,
+    code_or_callback: &str,
+) -> Result<()> {
     let code = if code_or_callback.contains("://") {
         spotify
             .parse_response_code(code_or_callback)
@@ -800,8 +849,12 @@ fn token_cache_path() -> Result<PathBuf> {
 fn ensure_token_cache_dir() -> Result<()> {
     let path = token_cache_path()?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create token cache directory at {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create token cache directory at {}",
+                parent.display()
+            )
+        })?;
     }
     Ok(())
 }

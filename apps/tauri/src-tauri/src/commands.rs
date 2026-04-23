@@ -1,10 +1,9 @@
 use desk_remote_core::{
-    ActionResult, AuthUrlResult, SpotifyAuthDebug,
     bindings::{self, Binding, BindingStore},
     config::{config_file_path, AppConfig},
     firetv::{self, FireTvAction, FireTvAppCache, FireTvAppScanResult, FireTvStatus},
     spotify::{self, SpotifyStatus},
-    HealthStatus,
+    ActionResult, AuthUrlResult, HealthStatus, SpotifyAuthDebug,
 };
 use tauri::{async_runtime, command, AppHandle};
 use tauri_plugin_autostart::ManagerExt;
@@ -90,7 +89,10 @@ pub async fn firetv_status(firetv_ip: Option<String>) -> Result<FireTvStatus, St
 }
 
 #[command]
-pub async fn firetv_action(action: FireTvAction, firetv_ip: Option<String>) -> Result<ActionResult, String> {
+pub async fn firetv_action(
+    action: FireTvAction,
+    firetv_ip: Option<String>,
+) -> Result<ActionResult, String> {
     let message = run_blocking(move || {
         let ip = resolve_firetv_ip(firetv_ip)?;
         firetv::perform_action(&ip, action).map_err(|e| e.to_string())
@@ -115,7 +117,10 @@ pub async fn firetv_scan_apps(firetv_ip: Option<String>) -> Result<FireTvAppScan
 }
 
 #[command]
-pub async fn firetv_launch_app(package_name: String, firetv_ip: Option<String>) -> Result<ActionResult, String> {
+pub async fn firetv_launch_app(
+    package_name: String,
+    firetv_ip: Option<String>,
+) -> Result<ActionResult, String> {
     let message = run_blocking(move || {
         let ip = resolve_firetv_ip(firetv_ip)?;
         firetv::launch_app(&ip, &package_name).map_err(|e| e.to_string())
@@ -139,7 +144,9 @@ fn resolve_firetv_ip(firetv_ip: Option<String>) -> Result<String, String> {
 #[command]
 pub async fn spotify_status() -> Result<SpotifyStatus, String> {
     let config = AppConfig::load().map_err(|e| e.to_string())?;
-    spotify::get_status(&config).await.map_err(|e| e.to_string())
+    spotify::get_status(&config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[command]
@@ -147,7 +154,9 @@ pub async fn spotify_start_auth() -> Result<AuthUrlResult, String> {
     let mut config = AppConfig::load().map_err(|e| e.to_string())?;
     spotify::prepare_auth(&mut config).map_err(|e| e.to_string())?;
     config.save().map_err(|e| e.to_string())?;
-    let auth = spotify::start_auth(&config).await.map_err(|e| e.to_string())?;
+    let auth = spotify::start_auth(&config)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(AuthUrlResult {
         url: auth.authorize_url,

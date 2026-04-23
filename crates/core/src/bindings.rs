@@ -50,7 +50,11 @@ pub fn list_bindings() -> Result<BindingStore> {
 
 pub fn save_binding(mut binding: Binding) -> Result<BindingStore> {
     let mut store = list_bindings()?;
-    let existing_binding = store.bindings.iter().find(|item| item.id == binding.id).cloned();
+    let existing_binding = store
+        .bindings
+        .iter()
+        .find(|item| item.id == binding.id)
+        .cloned();
 
     if binding.id.trim().is_empty() {
         binding.id = generate_binding_id();
@@ -63,9 +67,10 @@ pub fn save_binding(mut binding: Binding) -> Result<BindingStore> {
     binding.hotkey = binding.hotkey.trim().to_string();
 
     if !binding.hotkey.is_empty()
-        && store.bindings.iter().any(|item| {
-            item.id != binding.id && item.hotkey.eq_ignore_ascii_case(&binding.hotkey)
-        })
+        && store
+            .bindings
+            .iter()
+            .any(|item| item.id != binding.id && item.hotkey.eq_ignore_ascii_case(&binding.hotkey))
     {
         bail!("Hotkey already in use: {}", binding.hotkey);
     }
@@ -142,7 +147,9 @@ fn normalized_favorite_order(
     existing_binding: Option<&Binding>,
 ) -> u32 {
     if !binding.favorite {
-        return existing_binding.map(|item| item.favorite_order).unwrap_or(0);
+        return existing_binding
+            .map(|item| item.favorite_order)
+            .unwrap_or(0);
     }
 
     if binding.favorite_order > 0 {

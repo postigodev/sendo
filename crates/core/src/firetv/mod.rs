@@ -11,10 +11,15 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 const DEFAULT_ADB_PORT: &str = "5555";
 const ADB_STATUS_TIMEOUT: Duration = Duration::from_secs(3);
 const ADB_ACTION_TIMEOUT: Duration = Duration::from_secs(12);
 const ADB_SCAN_TIMEOUT: Duration = Duration::from_secs(20);
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -125,14 +130,14 @@ pub fn get_status(ip: &str) -> Result<FireTvStatus> {
         format!("ADB is available, but Fire TV did not report as connected at {target}")
     };
 
-        Ok(FireTvStatus {
-            configured: true,
-            adb_available: true,
-            connected,
-            screen_awake,
-            target: Some(target),
-            summary,
-        })
+    Ok(FireTvStatus {
+        configured: true,
+        adb_available: true,
+        connected,
+        screen_awake,
+        target: Some(target),
+        summary,
+    })
 }
 
 pub fn perform_action(ip: &str, action: FireTvAction) -> Result<String> {
@@ -194,7 +199,9 @@ pub fn prepare_spotify_session(ip: &str) -> Result<FireTvPrepResult> {
         target: target.clone(),
         awake,
         launched_spotify: true,
-        summary: format!("Connected to {target}, confirmed the screen is awake, and launched Spotify"),
+        summary: format!(
+            "Connected to {target}, confirmed the screen is awake, and launched Spotify"
+        ),
     })
 }
 
@@ -228,7 +235,9 @@ pub fn scan_apps(ip: &str) -> Result<FireTvAppScanResult> {
     }
 
     let output = run_adb_with_timeout(
-        &["-s", &target, "shell", "cmd", "package", "list", "packages", "-3"],
+        &[
+            "-s", &target, "shell", "cmd", "package", "list", "packages", "-3",
+        ],
         ADB_SCAN_TIMEOUT,
     )?;
     let mut apps = output
@@ -412,10 +421,15 @@ fn run_adb(args: &[&str]) -> Result<String> {
 }
 
 fn run_adb_with_timeout(args: &[&str], wait_timeout: Duration) -> Result<String> {
-    let mut child = Command::new("adb")
+    let mut command = Command::new("adb");
+    command
         .args(args)
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    suppress_process_window(&mut command);
+
+    let mut child = command
         .spawn()
         .with_context(|| format!("failed to execute adb {}", args.join(" ")))?;
 
@@ -483,6 +497,14 @@ fn run_adb_with_timeout(args: &[&str], wait_timeout: Duration) -> Result<String>
     bail!("adb exited with status {status}");
 }
 
+#[cfg(target_os = "windows")]
+fn suppress_process_window(command: &mut Command) {
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn suppress_process_window(_command: &mut Command) {}
+
 fn read_adb_stdout(mut stdout: ChildStdout) -> JoinHandle<Result<Vec<u8>>> {
     thread::spawn(move || {
         let mut buffer = Vec::new();
@@ -548,11 +570,16 @@ fn apps_cache_path() -> Result<PathBuf> {
 fn write_app_cache(cache: &FireTvAppCache) -> Result<()> {
     let path = apps_cache_path()?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create Fire TV app cache dir at {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create Fire TV app cache dir at {}",
+                parent.display()
+            )
+        })?;
     }
 
-    let raw = serde_json::to_string_pretty(cache).context("failed to serialize Fire TV app cache")?;
+    let raw =
+        serde_json::to_string_pretty(cache).context("failed to serialize Fire TV app cache")?;
     fs::write(&path, raw)
         .with_context(|| format!("failed to write Fire TV app cache at {}", path.display()))?;
 

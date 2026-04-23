@@ -125,10 +125,7 @@ fn migrate_app_data_dir(current_path: PathBuf, legacy_path: PathBuf) -> Result<P
 fn ensure_parent_dir(path: &Path) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "failed to create config directory at {}",
-                parent.display()
-            )
+            format!("failed to create config directory at {}", parent.display())
         })?;
     }
 
@@ -136,8 +133,10 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
 }
 
 fn default_spotify_target_hints() -> Vec<String> {
-    ["fire", "tv", "amazon", "spotify", "insignia", "toshiba", "osint"]
-        .into_iter()
-        .map(|value| value.to_string())
-        .collect()
+    [
+        "fire", "tv", "amazon", "spotify", "insignia", "toshiba", "osint",
+    ]
+    .into_iter()
+    .map(|value| value.to_string())
+    .collect()
 }

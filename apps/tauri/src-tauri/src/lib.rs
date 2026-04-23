@@ -62,10 +62,20 @@ pub fn run() {
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, "show_window", "Show Sendo", true, None::<&str>)?;
-    let start_spotify_item =
-        MenuItem::with_id(app, "start_spotify_on_tv", "Start Spotify On TV", true, None::<&str>)?;
-    let run_first_binding_item =
-        MenuItem::with_id(app, "run_first_binding", "Run First Binding", true, None::<&str>)?;
+    let start_spotify_item = MenuItem::with_id(
+        app,
+        "start_spotify_on_tv",
+        "Start Spotify On TV",
+        true,
+        None::<&str>,
+    )?;
+    let run_first_binding_item = MenuItem::with_id(
+        app,
+        "run_first_binding",
+        "Run First Binding",
+        true,
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
 
@@ -81,7 +91,11 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     )?;
 
     TrayIconBuilder::with_id("desk-remote-tray")
-        .icon(app.default_window_icon().expect("missing default window icon").clone())
+        .icon(
+            app.default_window_icon()
+                .expect("missing default window icon")
+                .clone(),
+        )
         .tooltip("Sendo")
         .menu(&menu)
         .show_menu_on_left_click(false)
@@ -96,7 +110,11 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = run_start_spotify_on_tv(&app_handle).await {
-                        notify_tray_error(&app_handle, "Start Spotify On TV failed", &error.to_string());
+                        notify_tray_error(
+                            &app_handle,
+                            "Start Spotify On TV failed",
+                            &error.to_string(),
+                        );
                     }
                 });
             }
@@ -104,7 +122,11 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = run_first_binding(&app_handle).await {
-                        notify_tray_error(&app_handle, "Run First Binding failed", &error.to_string());
+                        notify_tray_error(
+                            &app_handle,
+                            "Run First Binding failed",
+                            &error.to_string(),
+                        );
                     }
                 });
             }
