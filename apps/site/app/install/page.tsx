@@ -202,23 +202,28 @@ export default async function InstallPage() {
           description="From installation to first successful media control, this is the expected flow."
           className="page-shell"
         >
-          <div className="surface-panel overflow-hidden">
+          <div className="surface-panel overflow-hidden p-0">
             <ol className="divide-y divide-white/10">
               {site.installSteps.map((step, index) => (
                 <li
                   key={step}
-                  className="group grid gap-3 px-5 py-4 transition-colors hover:bg-cyan-300/[0.02] md:grid-cols-[4.5rem_1fr] md:px-6"
+                  className="group grid px-5 py-4 transition-colors hover:bg-cyan-300/[0.02] md:grid-cols-[2rem_1fr] md:px-6"
                 >
-                  <div className="flex items-start pt-0.5">
+                  <div className="flex items-start gap-3 pt-0.5">
                     <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-200/80">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                   </div>
-
-                  <div className="min-w-0">
-                    <p className="text-[15px] leading-7 text-slate-200">
-                      {step}
-                    </p>
+                
+                  <div className="min-w-0 space-y-1.5">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-[2px] font-mono text-[12px] text-cyan-200/60">
+                        &gt;
+                      </span>
+                      <p className="text-[15px] leading-7 text-slate-200">
+                        {step}
+                      </p>
+                    </div>
                   </div>
                 </li>
               ))}
