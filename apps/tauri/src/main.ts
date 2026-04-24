@@ -5,7 +5,6 @@ import {
   unregister as unregisterGlobalShortcut,
 } from "@tauri-apps/plugin-global-shortcut";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import packageJson from "../package.json";
 import { api } from "./api";
 import { renderIcons } from "./icons";
 import {
@@ -66,6 +65,7 @@ let {
 let flashTimeoutId: number | null = null;
 let spotifyPollIntervalId: number | null = null;
 let spotifyPollInFlight = false;
+let currentAppVersion = "";
 
 function render() {
   const issues = deriveIssues(currentConfig, currentFireTvStatus, currentSpotifyStatus);
@@ -79,7 +79,7 @@ function render() {
     sidebarIndicatorTop,
     sidebarIndicatorLeft,
     sidebarIndicatorVisible,
-    packageVersion: packageJson.version,
+    packageVersion: currentAppVersion,
     sectionLabel: sectionLabel(currentView),
     title: titleForView(currentView),
     flashMessage,
@@ -116,7 +116,7 @@ function render() {
       bindingIcon,
       describeBindingAction,
       screenLabel,
-      packageVersion: packageJson.version,
+      packageVersion: currentAppVersion,
     }),
   });
   renderIcons();
@@ -1013,6 +1013,7 @@ async function loadAll(message = "Configuration loaded.") {
   flash("Loading configuration...");
   render();
   try {
+    currentAppVersion = (await api.getAppInfo()).version;
     currentConfig = await api.getSettings();
     currentHealth = await api.healthCheck();
     currentFireTvStatus = await api.fireTvStatus(currentConfig.firetv_ip);

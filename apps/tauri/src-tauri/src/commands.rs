@@ -5,8 +5,14 @@ use desk_remote_core::{
     spotify::{self, SpotifyStatus},
     ActionResult, AuthUrlResult, HealthStatus, SpotifyAuthDebug,
 };
+use serde::Serialize;
 use tauri::{async_runtime, command, AppHandle};
 use tauri_plugin_autostart::ManagerExt;
+
+#[derive(Serialize)]
+pub struct AppInfo {
+    version: String,
+}
 
 async fn run_blocking<T, F>(task: F) -> Result<T, String>
 where
@@ -21,6 +27,13 @@ where
 #[command]
 pub async fn get_settings() -> Result<AppConfig, String> {
     run_blocking(|| AppConfig::load().map_err(|e| e.to_string())).await
+}
+
+#[command]
+pub fn get_app_info(app: AppHandle) -> AppInfo {
+    AppInfo {
+        version: app.package_info().version.to_string(),
+    }
 }
 
 #[command]

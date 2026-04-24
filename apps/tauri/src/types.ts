@@ -10,6 +10,10 @@ export type AppConfig = {
   start_minimized_to_tray: boolean;
 };
 
+export type AppInfo = {
+  version: string;
+};
+
 export type HealthStatus = {
   config_path: string;
   firetv_configured: boolean;

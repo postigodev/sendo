@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ActionResult,
+  AppInfo,
   AppConfig,
   AuthUrlResult,
   Binding,
@@ -15,6 +16,7 @@ import type {
 } from "./types";
 
 export const api = {
+  getAppInfo: () => invoke<AppInfo>("get_app_info"),
   getSettings: () => invoke<AppConfig>("get_settings"),
   saveSettings: (config: AppConfig) => invoke<AppConfig>("save_settings", { config }),
   bindingsList: () => invoke<BindingStore>("bindings_list"),
