@@ -48,7 +48,7 @@ a {
 
 @layer utilities {
   .page-shell {
-    @apply mx-auto w-full max-w-[2000px] px-4 md:px-6 xl:px-8;
+    @apply mx-auto w-full max-w-[1000px] px-4 md:px-6 xl:px-8;
   }
 
   .section-space {

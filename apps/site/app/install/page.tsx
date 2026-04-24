@@ -13,6 +13,7 @@ import { SectionShell } from "@/components/section-shell";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { site } from "@/content/site";
+import { getLatestRelease } from "@/lib/releases";
 
 const requirements = [
   "Windows",
@@ -21,7 +22,10 @@ const requirements = [
   "Spotify developer credentials if your setup needs them",
 ];
 
-export default function InstallPage() {
+export default async function InstallPage() {
+  const latestRelease = await getLatestRelease();
+  const versionLabel = latestRelease?.versionLabel ?? "Latest";
+
   return (
     <>
       <SiteHeader />
@@ -40,17 +44,24 @@ export default function InstallPage() {
                 </p>
                 <div className="mt-8 flex flex-wrap gap-3">
                   <Link
-                    href={site.links.release}
+                    href="/download/nsis"
                     className={buttonVariants({ variant: "primary" })}
                   >
-                    Download for Windows
+                    Download NSIS
                   </Link>
                   <Link
-                    href={site.links.github}
+                    href="/download/msi"
                     className={buttonVariants({ variant: "secondary" })}
                   >
-                    View releases
+                    Download MSI
                   </Link>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <DownloadBadge href="/download/nsis" label="NSIS" />
+                  <DownloadBadge href="/download/msi" label="MSI" />
+                  <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">
+                    {versionLabel}
+                  </span>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-2">
                   {["Windows", "ADB", "Fire TV", "Spotify Connect"].map(
@@ -126,6 +137,7 @@ export default function InstallPage() {
           eyebrow="Requirements"
           title="Before first run"
           description="Make sure the machine, the TV, and the target playback path are set up before the first action."
+          className="page-shell"
         >
           <div className="grid gap-5 md:grid-cols-[1.2fr_0.8fr]">
             <div className="surface-panel p-6 md:p-7">
@@ -188,8 +200,9 @@ export default function InstallPage() {
           eyebrow="Setup"
           title="First-run flow"
           description="From installation to first successful media control, this is the expected flow."
+          className="page-shell"
         >
-          <div className="surface-panel overflow-hidden max-w-[50rem]">
+          <div className="surface-panel overflow-hidden">
             <ol className="divide-y divide-white/10">
               {site.installSteps.map((step, index) => (
                 <li
@@ -216,8 +229,9 @@ export default function InstallPage() {
           eyebrow="Troubleshooting"
           title="Common setup failures"
           description="These are the setup failures you are most likely to hit first."
+          className="page-shell"  
         >
-          <div className="surface-panel overflow-hidden max-w-[50rem]">
+          <div className="surface-panel overflow-hidden">
             {site.troubleshooting.map((item, index) => (
               <div
                 key={item.title}
@@ -347,4 +361,15 @@ function TroubleshootingBody({ title }: { title: string }) {
   }
 
   return null;
+}
+
+function DownloadBadge({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-full border border-cyan-200/10 bg-cyan-200/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/85 transition-colors hover:border-cyan-200/20 hover:bg-cyan-200/[0.08] hover:text-white"
+    >
+      {label}
+    </Link>
+  );
 }

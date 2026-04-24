@@ -44,7 +44,7 @@ export function SiteHeader() {
           </nav>
         </div>
         <Link
-          href="https://github.com/postigodev/sendo/releases/latest"
+          href="/download/nsis"
           className={buttonVariants({ variant: "primary" })}
         >
           Download

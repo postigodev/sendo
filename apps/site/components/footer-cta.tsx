@@ -3,7 +3,11 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { site } from "@/content/site";
 
-export function FooterCta() {
+export function FooterCta({
+  versionLabel,
+}: {
+  versionLabel?: string;
+}) {
   return (
     <section className="section-space pt-4">
       <div className="page-shell">
@@ -19,9 +23,28 @@ export function FooterCta() {
                 that the requirements and first-run setup are obvious before
                 you touch the desktop app.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  href="/download/nsis"
+                  className="rounded-full border border-cyan-200/10 bg-cyan-200/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/85 transition-colors hover:border-cyan-200/20 hover:bg-cyan-200/[0.08] hover:text-white"
+                >
+                  NSIS
+                </Link>
+                <Link
+                  href="/download/msi"
+                  className="rounded-full border border-cyan-200/10 bg-cyan-200/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/85 transition-colors hover:border-cyan-200/20 hover:bg-cyan-200/[0.08] hover:text-white"
+                >
+                  MSI
+                </Link>
+                {versionLabel ? (
+                  <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">
+                    {versionLabel}
+                  </span>
+                ) : null}
+              </div>
             </div>
             <Link
-              href={site.links.release}
+              href="/download/nsis"
               className={cn(buttonVariants({ variant: "primary" }), "w-full md:w-auto")}
             >
               Download latest release

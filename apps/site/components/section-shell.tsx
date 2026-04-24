@@ -17,7 +17,7 @@ export function SectionShell({
 }) {
   return (
     <section id={id} className={cn("section-space", className)}>
-      <div className="page-shell">
+      <div>
         <div className="max-w-3xl">
           {eyebrow ? <p className="section-label">{eyebrow}</p> : null}
           <h2 className="mt-3 text-balance text-3xl font-semibold text-white md:text-4xl">

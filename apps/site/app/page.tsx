@@ -18,10 +18,14 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { SystemDiagram } from "@/components/system-diagram";
 import { site } from "@/content/site";
+import { getLatestRelease } from "@/lib/releases";
 
 const pills = ["Windows", "Fire TV", "Spotify Connect", "Local-first"];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const latestRelease = await getLatestRelease();
+  const versionLabel = latestRelease?.versionLabel ?? "Latest";
+
   return (
     <>
       <SiteHeader />
@@ -38,7 +42,7 @@ export default function HomePage() {
                 </p>
                 <div className="mt-9 flex flex-wrap gap-4">
                   <Link
-                    href={site.links.release}
+                    href="/download/nsis"
                     className={
                       buttonVariants({ variant: "primary" }) +
                       " gap-3 px-7 py-4 text-base"
@@ -57,6 +61,13 @@ export default function HomePage() {
                     <Code2 className="h-5 w-5" />
                     View on GitHub
                   </Link>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <DownloadBadge href="/download/nsis" label="NSIS" />
+                  <DownloadBadge href="/download/msi" label="MSI" />
+                  <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">
+                    {versionLabel}
+                  </span>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-3">
                   {pills.map((pill) => (
@@ -82,7 +93,7 @@ export default function HomePage() {
                       Latest release
                     </p>
                     <h2 className="mt-4 text-[2rem] font-semibold tracking-[-0.04em] text-cyan-200">
-                      v0.1.0
+                      {versionLabel}
                     </h2>
                   </div>
                   <span className="rounded-full border border-white/10 bg-white/[0.03] p-3 text-cyan-200">
@@ -94,7 +105,7 @@ export default function HomePage() {
                   tray actions, and reusable shortcuts.
                 </p>
                 <Link
-                  href={site.links.release}
+                  href={latestRelease?.htmlUrl ?? site.links.release}
                   className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-cyan-100 transition-colors hover:text-white"
                 >
                   Read changelog
@@ -117,11 +128,11 @@ export default function HomePage() {
                   </span>
                 </div>
                 <dl className="mt-6 space-y-4 text-sm text-slate-300">
-                  <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-3">
+                  <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
                     <dt className="text-slate-400">OS</dt>
                     <dd className="text-right text-slate-100">Windows 10/11</dd>
                   </div>
-                  <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-3">
+                  <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
                     <dt className="text-slate-400">TV</dt>
                     <dd className="text-right text-slate-100">
                       Fire TV with ADB debugging
@@ -170,11 +181,11 @@ export default function HomePage() {
           eyebrow="Main flow"
           title="Wake the TV, launch apps, route playback, reuse the flow."
           description="The point is not a prettier remote. The point is compressing a fragile multi-device routine into one repeatable path."
+          className="page-shell"
         >
           <MainFlow steps={site.flow} />
         </SectionShell>
-        <div className="grid gap-10 lg:grid-cols-2 items-start">
-          {" "}
+        <div className="grid lg:grid-cols-2 items-start page-shell">
           <SectionShell
             eyebrow="Architecture"
             title="Built as a local orchestration layer."
@@ -218,7 +229,7 @@ export default function HomePage() {
             <SystemDiagram />
           </div>
         </div>
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
+        <div className="grid gap-10 lg:grid-cols-2 lg:items-center page-shell">
           <SectionShell
             eyebrow="Capabilities"
             title="A compact control surface for repeated TV and media actions."
@@ -242,9 +253,20 @@ export default function HomePage() {
             <FeatureGrid items={site.features} />
           </div>
         </div>
-        <FooterCta />
+        <FooterCta versionLabel={versionLabel} />
       </main>
       <SiteFooter />
     </>
+  );
+}
+
+function DownloadBadge({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-full border border-cyan-200/10 bg-cyan-200/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/85 transition-colors hover:border-cyan-200/20 hover:bg-cyan-200/[0.08] hover:text-white"
+    >
+      {label}
+    </Link>
   );
 }
