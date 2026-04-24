@@ -1,6 +1,6 @@
 [package]
 name = "sendo"
-version = "0.1.2"
+version = "0.1.0"
 description = "Sendo media control utility"
 authors = ["akuma"]
 edition = "2021"
