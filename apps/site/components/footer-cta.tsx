@@ -5,18 +5,19 @@ import { site } from "@/content/site";
 
 export function FooterCta() {
   return (
-    <section className="section-space pt-10">
+    <section className="section-space pt-4">
       <div className="page-shell">
         <div className="surface-panel overflow-hidden p-8 md:p-10">
           <div className="grid gap-8 md:grid-cols-[1.3fr_auto] md:items-center">
             <div>
-              <p className="section-label">Install</p>
+              <p className="section-label">Download</p>
               <h2 className="mt-3 text-3xl font-semibold text-white md:text-4xl">
-                Install Sendo
+                Ready to install, configure, and keep it in the tray.
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 md:text-base">
-                Built for Windows. Ready for local control, reusable shortcuts,
-                and explicit device workflows.
+                Built for Windows. The install path is short. What matters is
+                that the requirements and first-run setup are obvious before
+                you touch the desktop app.
               </p>
             </div>
             <Link
