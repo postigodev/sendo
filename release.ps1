@@ -80,7 +80,7 @@ function Set-JsonVersion {
     )
 
     if ($updated -eq $content) {
-        throw "Could not update version in $Path"
+        return
     }
 
     Write-FileUtf8NoBom -Path $Path -Content $updated
@@ -104,7 +104,7 @@ function Set-CargoVersion {
     )
 
     if ($updated -eq $content) {
-        throw "Could not update version in $Path"
+        return
     }
 
     Write-FileUtf8NoBom -Path $Path -Content $updated
