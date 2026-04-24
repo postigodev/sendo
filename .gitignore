@@ -29,4 +29,5 @@ Thumbs.db
 .env.*
 
 # ===== Local Brainstorm Artifacts =====
-.superpowers/
+./docs/*
+/.superpowers/
