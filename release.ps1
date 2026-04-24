@@ -11,6 +11,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Write-FileUtf8NoBom {
+    param(
+        [string]$Path,
+        [string]$Content
+    )
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
+}
+
 function Write-Step {
     param([string]$Message)
     Write-Host ""
@@ -58,9 +68,19 @@ function Set-JsonVersion {
         [string]$NewVersion
     )
 
-    $json = Get-Content -Raw $Path | ConvertFrom-Json
-    $json.version = $NewVersion
-    $json | ConvertTo-Json -Depth 100 | Set-Content -NoNewline $Path
+    $content = Get-Content -Raw $Path
+    $updated = [regex]::Replace(
+        $content,
+        '(?m)("version"\s*:\s*")([^"]+)(")',
+        ('$1' + $NewVersion + '$3'),
+        1
+    )
+
+    if ($updated -eq $content) {
+        throw "Could not update version in $Path"
+    }
+
+    Write-FileUtf8NoBom -Path $Path -Content $updated
 }
 
 function Set-CargoVersion {
@@ -80,7 +100,7 @@ function Set-CargoVersion {
         throw "Could not update version in $Path"
     }
 
-    Set-Content -NoNewline $Path $updated
+    Write-FileUtf8NoBom -Path $Path -Content $updated
 }
 
 function Find-Artifact {
