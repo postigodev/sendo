@@ -69,10 +69,13 @@ function Set-JsonVersion {
     )
 
     $content = Get-Content -Raw $Path
-    $updated = [regex]::Replace(
+    $regex = [regex]'(?m)("version"\s*:\s*")([^"]+)(")'
+    $updated = $regex.Replace(
         $content,
-        '(?m)("version"\s*:\s*")([^"]+)(")',
-        ('$1' + $NewVersion + '$3'),
+        [System.Text.RegularExpressions.MatchEvaluator]{
+            param($match)
+            return $match.Groups[1].Value + $NewVersion + $match.Groups[3].Value
+        },
         1
     )
 
@@ -90,10 +93,14 @@ function Set-CargoVersion {
     )
 
     $content = Get-Content -Raw $Path
-    $updated = [regex]::Replace(
+    $regex = [regex]'(?ms)(^\[package\]\s.*?^version\s*=\s*")([^"]+)(")'
+    $updated = $regex.Replace(
         $content,
-        '(?ms)(^\[package\]\s.*?^version\s*=\s*")([^"]+)(")',
-        ('$1' + $NewVersion + '$3')
+        [System.Text.RegularExpressions.MatchEvaluator]{
+            param($match)
+            return $match.Groups[1].Value + $NewVersion + $match.Groups[3].Value
+        },
+        1
     )
 
     if ($updated -eq $content) {
@@ -155,11 +162,20 @@ Invoke-Step -Description "Build Sendo installers with Tauri" -Action {
 Write-Step "Resolve release artifacts"
 $nsisPattern = "Sendo_${Version}_*-setup.exe"
 $msiPattern = "Sendo_${Version}_*.msi"
-$nsisAsset = Find-Artifact -Directory $nsisDir -Pattern $nsisPattern
-$msiAsset = Find-Artifact -Directory $msiDir -Pattern $msiPattern
+$nsisAsset = $null
+$msiAsset = $null
 
-Write-Host "NSIS: $nsisAsset" -ForegroundColor Green
-Write-Host "MSI : $msiAsset" -ForegroundColor Green
+if ($DryRun) {
+    Write-Host "[dry-run] expecting artifact pattern: $nsisPattern" -ForegroundColor Yellow
+    Write-Host "[dry-run] expecting artifact pattern: $msiPattern" -ForegroundColor Yellow
+}
+else {
+    $nsisAsset = Find-Artifact -Directory $nsisDir -Pattern $nsisPattern
+    $msiAsset = Find-Artifact -Directory $msiDir -Pattern $msiPattern
+
+    Write-Host "NSIS: $nsisAsset" -ForegroundColor Green
+    Write-Host "MSI : $msiAsset" -ForegroundColor Green
+}
 
 Write-Step "Create GitHub release"
 if ($DryRun) {
