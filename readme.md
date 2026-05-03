@@ -159,15 +159,25 @@ Sendo exists to bridge that gap with a system that is explicit about device stat
 
 ## Roadmap
 
-- Add an app setting for richer tray/startup behavior
 - Improve Fire TV app metadata beyond package-name inference
 - Add stronger test coverage around Spotify target resolution and binding persistence
 - Continue shrinking `main.ts` by moving controller logic into dedicated modules
-- Consider packaging docs and release notes for public distribution
+- Tighten diagnostics around ADB, auth expiry, and device targeting edge cases
+- Expand contributor-friendly issues across UI consistency, reliability, and docs
+
+### Looking for contributors on
+
+- modularizing large frontend controller logic
+- tests around Spotify target/device selection edge cases
+- Fire TV diagnostics and error messaging
+- release/distribution documentation polish
+- UI consistency fixes that preserve the desktop-utility direction
 
 ## Contributing
 
 Issues and pull requests are welcome.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, validation, and pull request guidance.
 
 If you contribute, please keep the project biased toward:
 
@@ -178,4 +188,4 @@ If you contribute, please keep the project biased toward:
 
 ## License
 
-TBD
+MIT

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Read contributing guide
+    url: https://github.com/postigodev/sendo/blob/main/CONTRIBUTING.md
+    about: Start here before opening a pull request.
