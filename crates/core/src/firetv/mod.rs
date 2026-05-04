@@ -96,7 +96,7 @@ pub fn get_status(ip: &str) -> Result<FireTvStatus> {
             connected: false,
             screen_awake: None,
             target: None,
-            summary: "Missing Fire TV IP address".into(),
+            summary: "Missing Fire TV IP address. Enter the TV's local IP address from the Fire TV network settings.".into(),
         });
     }
 
@@ -127,7 +127,7 @@ pub fn get_status(ip: &str) -> Result<FireTvStatus> {
             None => format!("Connected to Fire TV at {target}; power state unavailable"),
         }
     } else {
-        format!("ADB is available, but Fire TV did not report as connected at {target}")
+        fire_tv_unreachable_message(&target)
     };
 
     Ok(FireTvStatus {
@@ -143,14 +143,14 @@ pub fn get_status(ip: &str) -> Result<FireTvStatus> {
 pub fn perform_action(ip: &str, action: FireTvAction) -> Result<String> {
     let trimmed_ip = ip.trim();
     if trimmed_ip.is_empty() {
-        bail!("Fire TV IP address is required");
+        bail!("Fire TV IP address is required. Enter the TV's local IP address from the Fire TV network settings.");
     }
 
     ensure_adb_available()?;
     let target = normalize_target(trimmed_ip);
 
     if !connect(&target)? {
-        bail!("ADB could not establish a connection with {target}");
+        bail!(fire_tv_unreachable_message(&target));
     }
 
     match action {
@@ -160,7 +160,7 @@ pub fn perform_action(ip: &str, action: FireTvAction) -> Result<String> {
             if awake {
                 Ok(format!("Fire TV at {target} is awake"))
             } else {
-                bail!("Fire TV at {target} did not wake after retries")
+                bail!("Fire TV at {target} did not wake after retries. Confirm the TV is powered on and still accepts ADB commands.")
             }
         }
         FireTvAction::LaunchSpotify => {
@@ -178,14 +178,14 @@ pub fn perform_action(ip: &str, action: FireTvAction) -> Result<String> {
 pub fn prepare_spotify_session(ip: &str) -> Result<FireTvPrepResult> {
     let trimmed_ip = ip.trim();
     if trimmed_ip.is_empty() {
-        bail!("Fire TV IP address is required");
+        bail!("Fire TV IP address is required. Enter the TV's local IP address from the Fire TV network settings.");
     }
 
     ensure_adb_available()?;
     let target = normalize_target(trimmed_ip);
 
     if !connect(&target)? {
-        bail!("ADB could not establish a connection with {target}");
+        bail!(fire_tv_unreachable_message(&target));
     }
 
     let awake = ensure_awake(&target, 4)?;
@@ -224,14 +224,14 @@ pub fn get_cached_apps() -> Result<FireTvAppCache> {
 pub fn scan_apps(ip: &str) -> Result<FireTvAppScanResult> {
     let trimmed_ip = ip.trim();
     if trimmed_ip.is_empty() {
-        bail!("Fire TV IP address is required");
+        bail!("Fire TV IP address is required. Enter the TV's local IP address from the Fire TV network settings.");
     }
 
     ensure_adb_available()?;
     let target = normalize_target(trimmed_ip);
 
     if !connect(&target)? {
-        bail!("ADB could not establish a connection with {target}");
+        bail!(fire_tv_unreachable_message(&target));
     }
 
     let output = run_adb_with_timeout(
@@ -271,7 +271,7 @@ pub fn scan_apps(ip: &str) -> Result<FireTvAppScanResult> {
 pub fn launch_app(ip: &str, package_name: &str) -> Result<String> {
     let trimmed_ip = ip.trim();
     if trimmed_ip.is_empty() {
-        bail!("Fire TV IP address is required");
+        bail!("Fire TV IP address is required. Enter the TV's local IP address from the Fire TV network settings.");
     }
 
     let package_name = package_name.trim();
@@ -283,7 +283,7 @@ pub fn launch_app(ip: &str, package_name: &str) -> Result<String> {
     let target = normalize_target(trimmed_ip);
 
     if !connect(&target)? {
-        bail!("ADB could not establish a connection with {target}");
+        bail!(fire_tv_unreachable_message(&target));
     }
 
     let awake = ensure_awake(&target, 4)?;
@@ -299,14 +299,27 @@ fn adb_available() -> bool {
     run_adb_with_timeout(&["version"], ADB_STATUS_TIMEOUT).is_ok()
 }
 
+fn adb_unavailable_message(error: &anyhow::Error) -> String {
+    format!(
+        "ADB is not available. Install Android Platform Tools, make sure `adb` is in PATH, then restart Sendo. Details: {error}"
+    )
+}
+
+fn fire_tv_unreachable_message(target: &str) -> String {
+    format!(
+        "Fire TV at {target} is not reachable over ADB. Check the IP address, make sure the TV is on the same network, enable ADB debugging, accept the debugging prompt on the TV, then retry."
+    )
+}
+
 fn ensure_adb_available() -> Result<()> {
     run_adb_with_timeout(&["version"], ADB_STATUS_TIMEOUT)
         .map(|_| ())
-        .map_err(|error| anyhow!("ADB is not available: {error}"))
+        .map_err(|error| anyhow!(adb_unavailable_message(&error)))
 }
 
 fn connect(target: &str) -> Result<bool> {
-    let output = run_adb_with_timeout(&["connect", target], ADB_STATUS_TIMEOUT)?;
+    let output = run_adb_with_timeout(&["connect", target], ADB_STATUS_TIMEOUT)
+        .with_context(|| fire_tv_unreachable_message(target))?;
     let normalized = output.to_ascii_lowercase();
 
     if normalized.contains("cannot")
@@ -554,6 +567,31 @@ fn title_case(value: &str) -> String {
         first.to_ascii_uppercase(),
         chars.as_str().to_ascii_lowercase()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adb_unavailable_message_mentions_install_and_path() {
+        let message = adb_unavailable_message(&anyhow!("program not found"));
+
+        assert!(message.contains("Install Android Platform Tools"));
+        assert!(message.contains("PATH"));
+        assert!(message.contains("program not found"));
+    }
+
+    #[test]
+    fn fire_tv_unreachable_message_lists_next_steps() {
+        let message = fire_tv_unreachable_message("192.168.1.50:5555");
+
+        assert!(message.contains("192.168.1.50:5555"));
+        assert!(message.contains("IP address"));
+        assert!(message.contains("same network"));
+        assert!(message.contains("ADB debugging"));
+        assert!(message.contains("debugging prompt"));
+    }
 }
 
 fn current_epoch_ms() -> Result<u64> {
