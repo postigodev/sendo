@@ -87,10 +87,31 @@ TypeScript UI
 - Node.js
 - `pnpm`
 - Rust toolchain
-- Android Platform Tools (`adb`) in `PATH`
+- Android Platform Tools with `adb` in `PATH`
 - Fire TV with ADB debugging enabled
 - Spotify Premium
 - Spotify Developer app credentials
+
+On Windows, install Android Platform Tools and make sure the folder that
+contains `adb.exe` is on `PATH`. A quick check from a new PowerShell window is:
+
+```powershell
+adb version
+adb devices
+```
+
+If PowerShell cannot find `adb`, restart the terminal after updating `PATH` or
+use the full path to `adb.exe` until the environment is fixed.
+
+Before first run, enable ADB debugging on the Fire TV, keep the TV and Windows
+machine on the same network, and accept the Fire TV debugging prompt the first
+time Sendo or `adb connect <fire-tv-ip>` reaches the device.
+
+For Spotify, create a Spotify Developer app, copy the client ID and client
+secret into Sendo, and use the redirect URL shown by the app. After
+authentication, select the exact Spotify Connect device you want Sendo to
+control; do not rely on Spotify's current-device guess when more than one TV,
+speaker, or browser session is available.
 
 ### Clone and install
 
@@ -135,11 +156,25 @@ cd C:\Users\akuma\repos\desk-remote\apps\tauri
 ## Main Flow
 
 1. Configure the Fire TV IP address in `ADB & Device`.
-2. Configure Spotify OAuth credentials and redirect URL in `Spotify`.
-3. Authenticate Spotify and select the exact Spotify Connect target device.
-4. Use `Start Spotify on TV` from Home, tray, or a binding.
-5. Sendo connects to the TV over ADB, wakes it if needed, launches Spotify, and transfers playback to the selected Spotify device.
-6. Control playback from the Spotify page, Remote page, Quick Access, or global hotkeys.
+2. Test the ADB connection and approve the debugging prompt on the TV if it appears.
+3. Configure Spotify OAuth credentials and redirect URL in `Spotify`.
+4. Authenticate Spotify and select the exact Spotify Connect target device.
+5. Use `Start Spotify on TV` from Home, tray, or a binding.
+6. Sendo connects to the TV over ADB, wakes it if needed, launches Spotify, and transfers playback to the selected Spotify device.
+7. Control playback from the Spotify page, Remote page, Quick Access, or global hotkeys.
+
+## First-run troubleshooting
+
+- `adb` is not found: confirm Android Platform Tools are installed and the
+  platform-tools directory is on `PATH` in a new terminal.
+- Fire TV does not connect: confirm ADB debugging is enabled, both devices are
+  on the same network, and the TV accepted the debugging authorization prompt.
+- Spotify auth fails: confirm the client ID, client secret, and redirect URL in
+  Sendo match the Spotify Developer app exactly.
+- Playback transfers to the wrong device: open the Spotify page and select the
+  intended Spotify Connect target explicitly before running the action.
+- First action still fails: check the Health page first; it separates ADB,
+  Spotify auth, target selection, and startup/tray readiness.
 
 ## Why it exists
 
