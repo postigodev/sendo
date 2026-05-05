@@ -171,3 +171,119 @@ fn normalized_favorite_order(
         .unwrap_or(0)
         .saturating_add(1)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::firetv::FireTvAction;
+    use std::{env, fs, path::PathBuf};
+
+    fn binding(id: &str, label: &str, favorite: bool, favorite_order: u32) -> Binding {
+        Binding {
+            id: id.to_string(),
+            label: label.to_string(),
+            hotkey: String::new(),
+            favorite,
+            favorite_order,
+            action: BindingAction::FireTvKey {
+                action: FireTvAction::Home,
+            },
+        }
+    }
+
+    fn with_temp_home(test: impl FnOnce()) {
+        let original_home = env::var_os("HOME");
+        let original_appdata = env::var_os("APPDATA");
+        let temp_home =
+            env::temp_dir().join(format!("sendo-bindings-test-{}", generate_binding_id()));
+
+        env::set_var("HOME", &temp_home);
+        env::remove_var("APPDATA");
+
+        test();
+
+        if let Some(home) = original_home {
+            env::set_var("HOME", home);
+        } else {
+            env::remove_var("HOME");
+        }
+
+        if let Some(appdata) = original_appdata {
+            env::set_var("APPDATA", appdata);
+        } else {
+            env::remove_var("APPDATA");
+        }
+
+        let _ = fs::remove_dir_all(temp_home);
+    }
+
+    fn stored_bindings_path() -> PathBuf {
+        bindings_path().expect("bindings path")
+    }
+
+    #[test]
+    fn saves_updates_deletes_and_reorders_bindings() {
+        with_temp_home(|| {
+            let store = save_binding(binding("", "Home", true, 0)).expect("save new binding");
+            assert_eq!(store.bindings.len(), 1);
+
+            let home = store.bindings[0].clone();
+            assert!(!home.id.is_empty());
+            assert_eq!(home.favorite_order, 1);
+            assert!(stored_bindings_path().exists());
+
+            let mut updated_home = home.clone();
+            updated_home.label = "Living Room Home".to_string();
+            updated_home.favorite_order = 4;
+            let store = save_binding(updated_home.clone()).expect("update binding");
+            assert_eq!(store.bindings.len(), 1);
+            assert_eq!(store.bindings[0].label, "Living Room Home");
+            assert_eq!(store.bindings[0].favorite_order, 4);
+
+            let store =
+                save_binding(binding("spotify", "Spotify", true, 1)).expect("save second binding");
+            assert_eq!(store.bindings.len(), 2);
+
+            let mut reordered_home = updated_home.clone();
+            reordered_home.favorite_order = 1;
+            let mut reordered_spotify = store
+                .bindings
+                .iter()
+                .find(|binding| binding.id == "spotify")
+                .expect("spotify binding")
+                .clone();
+            reordered_spotify.favorite_order = 2;
+
+            save_binding(reordered_home).expect("reorder first binding");
+            let store = save_binding(reordered_spotify).expect("reorder second binding");
+            let reloaded = list_bindings().expect("reload bindings");
+
+            assert_eq!(store.bindings.len(), reloaded.bindings.len());
+            assert_eq!(
+                reloaded
+                    .bindings
+                    .iter()
+                    .find(|binding| binding.label == "Living Room Home")
+                    .map(|binding| binding.favorite_order),
+                Some(1)
+            );
+            assert_eq!(
+                reloaded
+                    .bindings
+                    .iter()
+                    .find(|binding| binding.id == "spotify")
+                    .map(|binding| binding.favorite_order),
+                Some(2)
+            );
+
+            let store = delete_binding(&home.id).expect("delete binding");
+            assert_eq!(store.bindings.len(), 1);
+            assert_eq!(store.bindings[0].id, "spotify");
+
+            let reloaded = list_bindings().expect("reload after delete");
+            assert_eq!(reloaded.bindings.len(), 1);
+            assert_eq!(reloaded.bindings[0].id, "spotify");
+            assert_eq!(reloaded.bindings[0].favorite_order, 2);
+        });
+    }
+}
