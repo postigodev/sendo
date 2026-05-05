@@ -34,20 +34,25 @@ export const site = {
     "Quick access actions",
   ],
   installSteps: [
-    "Install Sendo on Windows.",
-    "Enable ADB debugging on your Fire TV.",
-    "Add the Fire TV IP address in Sendo.",
-    "Connect Spotify and select a target device.",
-    "Run a first action and save it as a shortcut if you want.",
+    "Install Sendo on Windows and confirm adb works from a new PowerShell window.",
+    "Enable ADB debugging on your Fire TV and approve the first connection prompt.",
+    "Add the Fire TV IP address in Sendo, then test the ADB connection.",
+    "Connect Spotify with developer app credentials and the expected redirect URL.",
+    "Select the exact Spotify Connect target device before running an action.",
+    "Run Start Spotify on TV and save it as a shortcut if you want.",
   ],
   troubleshooting: [
     {
       title: "ADB not connected",
-      body: "Check that the TV is on the same network, ADB debugging is enabled, and `adb` is available in your PATH.",
+      body: "Check that adb is on PATH, the TV is on the same network, ADB debugging is enabled, and the TV accepted the authorization prompt.",
     },
     {
       title: "Wrong Spotify device",
       body: "Open Spotify in Sendo and pick the explicit target device instead of relying on whatever Spotify marked as current.",
+    },
+    {
+      title: "Spotify auth fails",
+      body: "Confirm the client ID, client secret, and redirect URL match the Spotify Developer app exactly.",
     },
     {
       title: "Auth expired",
