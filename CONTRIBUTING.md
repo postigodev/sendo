@@ -32,7 +32,26 @@ If you want to contribute code, start by opening an issue or picking an existing
 - Node.js
 - `pnpm`
 - Rust toolchain
-- Android Platform Tools (`adb`) in `PATH`
+- Android Platform Tools with `adb` in `PATH`
+- Fire TV with ADB debugging enabled for manual device testing
+- Spotify Developer app credentials for Spotify auth flows
+
+After installing Android Platform Tools, open a new PowerShell window and verify:
+
+```powershell
+adb version
+adb devices
+```
+
+If `adb` is not found, add the Platform Tools directory to the Windows user
+`PATH` and restart the terminal. For Fire TV testing, the TV and development
+machine must be on the same network, ADB debugging must be enabled on the TV,
+and the TV may show an authorization prompt on the first connection.
+
+Spotify flows require a Spotify Developer app. Use the app's client ID, client
+secret, and the redirect URL expected by Sendo. When testing playback routing,
+select the explicit Spotify Connect target in the app instead of relying on the
+currently active Spotify device.
 
 ### Install dependencies
 
@@ -47,6 +66,10 @@ pnpm install
 cd C:\Users\akuma\repos\desk-remote\apps\tauri
 pnpm tauri dev
 ```
+
+For a first successful manual action, configure the Fire TV IP in `ADB &
+Device`, test the ADB connection, authenticate Spotify, choose the intended
+target device, then run `Start Spotify on TV`.
 
 ### Run the site
 

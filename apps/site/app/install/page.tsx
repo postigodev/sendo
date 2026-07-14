@@ -17,9 +17,10 @@ import { getLatestRelease } from "@/lib/releases";
 
 const requirements = [
   "Windows",
-  "adb available in PATH",
-  "Fire TV with ADB debugging enabled",
-  "Spotify developer credentials if your setup needs them",
+  "adb available from a new PowerShell window",
+  "Fire TV with ADB debugging enabled and authorized",
+  "Spotify Premium plus developer app credentials",
+  "Explicit Spotify Connect target selected in Sendo",
 ];
 
 export default async function InstallPage() {
@@ -39,8 +40,9 @@ export default async function InstallPage() {
                 </h1>
                 <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 md:text-lg">
                   Download the Windows build, enable Fire TV control over ADB,
-                  connect Spotify, and keep Sendo available from the tray for
-                  repeatable media actions.
+                  connect Spotify with the correct OAuth credentials, select
+                  the intended target device, and keep Sendo available from the
+                  tray for repeatable media actions.
                 </p>
                 <div className="mt-8 flex flex-wrap gap-3">
                   <Link
@@ -100,7 +102,8 @@ export default async function InstallPage() {
                 <div className="mt-6 rounded-[18px] border border-white/10 bg-cyan-300/[0.04] p-4">
                   <p className="text-sm leading-7 text-slate-300">
                     Sendo is local-first. There is no cloud setup layer between
-                    install and device control.
+                    install and device control, so Windows, ADB, Fire TV, and
+                    Spotify setup all happen on your machine.
                   </p>
                 </div>
               </div>
@@ -147,7 +150,8 @@ export default async function InstallPage() {
               <div className="mt-5 space-y-4 text-sm leading-7 text-slate-300">
                 <p>
                   The install itself is straightforward. Most first-run failures
-                  come from missing ADB, Fire TV debugging not enabled, or
+                  come from missing ADB, Fire TV debugging not enabled or not
+                  authorized, Spotify redirect credentials not matching, or
                   selecting the wrong Spotify device.
                 </p>
                 <p>
@@ -182,14 +186,18 @@ export default async function InstallPage() {
                   <span className="mt-[2px] font-mono text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-200/80">
                     02
                   </span>
-                  <span>Enable Fire TV debugging before opening the app.</span>
+                  <span>
+                    Enable Fire TV debugging and approve the first connection
+                    prompt on the TV.
+                  </span>
                 </li>
                 <li className="flex gap-3">
                   <span className="mt-[2px] font-mono text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-200/80">
                     03
                   </span>
                   <span>
-                    Authenticate Spotify and explicitly select a target.
+                    Authenticate Spotify with the developer app credentials and
+                    explicitly select a target.
                   </span>
                 </li>
               </ol>
@@ -308,9 +316,38 @@ function TroubleshootingBody({ title }: { title: string }) {
         <li className="flex gap-3">
           <span className="text-cyan-200">-</span>
           <span>
+            Accept the debugging authorization prompt on the TV the first time
+            the Windows machine connects.
+          </span>
+        </li>
+        <li className="flex gap-3">
+          <span className="text-cyan-200">-</span>
+          <span>
             Confirm <code className={codeClass}>adb</code> is available in{" "}
             <code className={codeClass}>PATH</code>.
           </span>
+        </li>
+      </ul>
+    );
+  }
+
+  if (title === "Spotify auth fails") {
+    return (
+      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
+        <li className="flex gap-3">
+          <span className="text-cyan-200">-</span>
+          <span>Open the Spotify Developer dashboard.</span>
+        </li>
+        <li className="flex gap-3">
+          <span className="text-cyan-200">-</span>
+          <span>
+            Confirm the client ID, client secret, and redirect URL match the
+            values entered in Sendo.
+          </span>
+        </li>
+        <li className="flex gap-3">
+          <span className="text-cyan-200">-</span>
+          <span>Run authentication again from the Spotify page.</span>
         </li>
       </ul>
     );
