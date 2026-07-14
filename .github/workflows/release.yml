@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  pull_request:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan release
+    runs-on: windows-2022
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - id: version
+        name: Validate release identity
+        shell: pwsh
+        env:
+          EXPECTED_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: |
+          $info = ./scripts/Test-ReleaseVersion.ps1 -ExpectedTag $env:EXPECTED_TAG -PassThru
+          "version=$($info.Version)" >> $env:GITHUB_OUTPUT
+          "tag=$($info.Tag)" >> $env:GITHUB_OUTPUT
+          "prerelease=$($info.IsPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+  validate:
+    name: Validate source
+    needs: plan
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.92.0
+          components: rustfmt
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.12.0
+      - name: Activate pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.2 --activate
+      - name: Check Rust
+        shell: pwsh
+        run: |
+          cargo fmt --all -- --check
+          cargo check --workspace --locked
+          cargo test --workspace --locked
+      - name: Parse release scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem release.ps1, scripts/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) {
+              $errors | ForEach-Object { Write-Error "$($_.Extent.File):$($_.Extent.StartLineNumber): $($_.Message)" }
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+      - name: Check frontend
+        working-directory: apps/tauri
+        shell: pwsh
+        run: |
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm build
+      - name: Require reproducible checkout
+        shell: pwsh
+        run: |
+          git diff --check
+          git diff --exit-code
+
+  build-windows:
+    name: Build Windows installers
+    if: github.event_name == 'push'
+    needs: [plan, validate]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.92.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.12.0
+      - name: Activate pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.26.2 --activate
+      - name: Package release assets
+        shell: pwsh
+        run: ./scripts/Build-WindowsRelease.ps1 -Version '${{ needs.plan.outputs.version }}'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sendo-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish verified draft
+    if: github.event_name == 'push'
+    needs: [plan, build-windows]
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: sendo-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/release
+      - name: Publish after remote verification
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $prerelease = [bool]::Parse('${{ needs.plan.outputs.prerelease }}')
+          ./scripts/Publish-GitHubRelease.ps1 `
+            -Repository '${{ github.repository }}' `
+            -Tag '${{ needs.plan.outputs.tag }}' `
+            -CommitSha '${{ github.sha }}' `
+            -AssetDir ./dist/release `
+            -Prerelease $prerelease

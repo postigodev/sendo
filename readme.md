@@ -128,11 +128,11 @@ cd C:\Users\akuma\repos\desk-remote\apps\tauri
 pnpm tauri dev
 ```
 
-### Build a Windows installer
+### Build Windows installers
 
 ```powershell
 cd C:\Users\akuma\repos\desk-remote\apps\tauri
-npm run tauri -- build
+corepack pnpm exec tauri build --bundles nsis,msi
 ```
 
 Build outputs:
@@ -140,6 +140,10 @@ Build outputs:
 - `target/release/sendo.exe`
 - `target/release/bundle/nsis/Sendo_0.1.0_x64-setup.exe`
 - `target/release/bundle/msi/Sendo_0.1.0_x64_en-US.msi`
+
+For supported downloads, checksum verification, and the tag-driven release
+process, see [`docs/distribution.md`](docs/distribution.md). GitHub's automatic
+source archives are not portable Sendo applications.
 
 ### Validation
 
@@ -213,6 +217,9 @@ Sendo exists to bridge that gap with a system that is explicit about device stat
 Issues and pull requests are welcome.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, validation, and pull request guidance.
+
+Maintainers should also read [`docs/distribution.md`](docs/distribution.md)
+before preparing or tagging a release.
 
 If you contribute, please keep the project biased toward:
 

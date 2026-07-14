@@ -120,6 +120,14 @@ Please include:
 - how you validated it
 - screenshots if the UI changed
 
+## Releases
+
+Releases are tag-driven and are not created from contributor pull requests.
+Maintainers must use the preparation and verification process documented in
+[`docs/distribution.md`](docs/distribution.md). Do not manually upload a build
+from an uncommitted worktree or treat GitHub's source archives as portable app
+packages.
+
 ## Good first contributions
 
 The best first contributions usually fall into one of these buckets:
