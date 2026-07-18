@@ -164,11 +164,7 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
         if let Some(device) = target_resolution.device.as_ref() {
             let name = device.name.clone();
             let id = Some(device.id.clone());
-            let playback_on_target = id
-                .as_deref()
-                .zip(playback.device_id.as_deref())
-                .map(|(target_id, device_id)| target_id == device_id)
-                .unwrap_or(false);
+            let playback_on_target = is_playback_on_target(Some(device), &playback);
             (
                 true,
                 id,
@@ -653,6 +649,13 @@ fn mark_selected_devices(
         .collect()
 }
 
+fn is_playback_on_target(target: Option<&TargetDevice>, playback: &PlaybackSnapshot) -> bool {
+    target
+        .map(|device| device.id.as_str())
+        .zip(playback.device_id.as_deref())
+        .is_some_and(|(target_id, playback_id)| target_id == playback_id)
+}
+
 async fn fetch_playback_snapshot(spotify: &AuthCodeSpotify) -> Result<PlaybackSnapshot> {
     let playback = spotify
         .current_playback(None, Some(&[AdditionalType::Episode]))
@@ -857,4 +860,125 @@ fn ensure_token_cache_dir() -> Result<()> {
         })?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(selected_device_id: &str) -> AppConfig {
+        AppConfig {
+            spotify_selected_device_id: selected_device_id.into(),
+            ..AppConfig::default()
+        }
+    }
+
+    fn device(id: Option<&str>, name: &str, matches_hints: bool) -> SpotifyDevice {
+        SpotifyDevice {
+            id: id.map(str::to_string),
+            name: name.into(),
+            is_active: false,
+            is_restricted: false,
+            is_selected_target: false,
+            matches_hints,
+        }
+    }
+
+    fn playback(device_id: Option<&str>) -> PlaybackSnapshot {
+        PlaybackSnapshot {
+            device_id: device_id.map(str::to_string),
+            device_name: None,
+            now_playing: None,
+        }
+    }
+
+    #[test]
+    fn selects_the_only_device_matching_configured_hints() {
+        let devices = vec![
+            device(Some("phone"), "Phone", false),
+            device(Some("tv"), "Living Room TV", true),
+        ];
+
+        let resolution = resolve_target_device(&config(""), &devices);
+        let target = resolution.device.expect("unique target");
+
+        assert_eq!(target.id, "tv");
+        assert_eq!(target.name, "Living Room TV");
+        assert!(!resolution.selected_missing);
+        assert!(!resolution.ambiguous);
+    }
+
+    #[test]
+    fn requires_manual_selection_when_multiple_devices_match_hints() {
+        let devices = vec![
+            device(Some("tv-1"), "Living Room TV", true),
+            device(Some("tv-2"), "Bedroom TV", true),
+        ];
+
+        let resolution = resolve_target_device(&config(""), &devices);
+
+        assert!(resolution.device.is_none());
+        assert!(!resolution.selected_missing);
+        assert!(resolution.ambiguous);
+    }
+
+    #[test]
+    fn persisted_selection_wins_over_ambiguous_name_matches() {
+        let devices = vec![
+            device(Some("tv-1"), "Living Room TV", true),
+            device(Some("tv-2"), "Bedroom TV", true),
+        ];
+
+        let resolution = resolve_target_device(&config(" tv-2 "), &devices);
+        let target = resolution.device.expect("persisted target");
+
+        assert_eq!(target.id, "tv-2");
+        assert_eq!(target.name, "Bedroom TV");
+        assert!(!resolution.selected_missing);
+        assert!(!resolution.ambiguous);
+    }
+
+    #[test]
+    fn reports_when_persisted_selection_is_no_longer_available() {
+        let devices = vec![device(Some("tv-1"), "Living Room TV", true)];
+
+        let resolution = resolve_target_device(&config("missing-tv"), &devices);
+
+        assert!(resolution.device.is_none());
+        assert!(resolution.selected_missing);
+        assert!(!resolution.ambiguous);
+    }
+
+    #[test]
+    fn marks_only_the_resolved_target_as_selected() {
+        let devices = vec![
+            device(Some("phone"), "Phone", false),
+            device(Some("tv"), "Living Room TV", true),
+        ];
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "Living Room TV".into(),
+        };
+
+        let marked = mark_selected_devices(devices, Some(&target));
+
+        assert!(!marked[0].is_selected_target);
+        assert!(marked[1].is_selected_target);
+    }
+
+    #[test]
+    fn distinguishes_playback_on_target_from_playback_elsewhere() {
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "Living Room TV".into(),
+        };
+
+        assert!(is_playback_on_target(Some(&target), &playback(Some("tv"))));
+        assert!(!is_playback_on_target(
+            Some(&target),
+            &playback(Some("phone"))
+        ));
+        assert!(!is_playback_on_target(Some(&target), &playback(None)));
+        assert!(!is_playback_on_target(None, &playback(Some("tv"))));
+    }
 }
