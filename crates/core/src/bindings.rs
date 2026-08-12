@@ -6,7 +6,11 @@ use crate::{
 use anyhow::{bail, Context, Result};
 use rand::{distr::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::{
+    fs::{self, OpenOptions},
+    io::Write,
+    path::PathBuf,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -128,9 +132,82 @@ fn write_store(store: &BindingStore) -> Result<()> {
     }
 
     let raw = serde_json::to_string_pretty(store).context("failed to serialize bindings")?;
-    fs::write(&path, raw)
-        .with_context(|| format!("failed to write bindings file at {}", path.display()))?;
+    let temp_path = path.with_extension(format!("json.tmp-{}", generate_binding_id()));
+    let write_result = (|| -> Result<()> {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+            .with_context(|| {
+                format!(
+                    "failed to create temporary bindings file at {}",
+                    temp_path.display()
+                )
+            })?;
+        file.write_all(raw.as_bytes()).with_context(|| {
+            format!(
+                "failed to write temporary bindings file at {}",
+                temp_path.display()
+            )
+        })?;
+        file.sync_all().with_context(|| {
+            format!(
+                "failed to sync temporary bindings file at {}",
+                temp_path.display()
+            )
+        })?;
+        Ok(())
+    })();
+
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
+    }
+
+    if let Err(error) = replace_file(&temp_path, &path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error)
+            .with_context(|| format!("failed to replace bindings file at {}", path.display()));
+    }
+
     Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_file(temp_path: &PathBuf, path: &PathBuf) -> std::io::Result<()> {
+    fs::rename(temp_path, path)
+}
+
+#[cfg(windows)]
+fn replace_file(temp_path: &PathBuf, path: &PathBuf) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let source: Vec<u16> = temp_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let destination: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    if unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            destination.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 fn generate_binding_id() -> String {
@@ -284,6 +361,22 @@ mod tests {
             assert_eq!(reloaded.bindings.len(), 1);
             assert_eq!(reloaded.bindings[0].id, "spotify");
             assert_eq!(reloaded.bindings[0].favorite_order, 2);
+        });
+    }
+
+    #[test]
+    fn replaces_bindings_without_leaving_temporary_files() {
+        with_temp_home(|| {
+            save_binding(binding("home", "Home", false, 0)).expect("save binding");
+            let mut updated = binding("home", "Updated", false, 0);
+            updated.hotkey = "Ctrl+H".to_string();
+            save_binding(updated).expect("replace binding");
+
+            let path = stored_bindings_path();
+            let reloaded = list_bindings().expect("reload binding");
+            assert_eq!(reloaded.bindings[0].label, "Updated");
+            assert_eq!(reloaded.bindings[0].hotkey, "Ctrl+H");
+            assert!(fs::read_to_string(path).is_ok());
         });
     }
 }
