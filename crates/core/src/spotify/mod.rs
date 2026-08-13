@@ -9,12 +9,13 @@ use rspotify::{
     Config, Credentials, OAuth,
 };
 use serde::Serialize;
-use std::{fs, path::PathBuf};
+use std::{fs, net::IpAddr, path::PathBuf};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::TcpListener,
     time::{sleep, timeout, Duration},
 };
+use url::Url;
 
 const AUTH_CALLBACK_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -83,13 +84,9 @@ pub struct SpotifyAuthStart {
 }
 
 pub fn status_summary(client_id: &str, client_secret: &str, redirect_url: &str) -> String {
-    if client_id.trim().is_empty()
-        || client_secret.trim().is_empty()
-        || redirect_url.trim().is_empty()
-    {
-        "Spotify OAuth is not configured yet".into()
-    } else {
-        "Spotify OAuth settings are present".into()
+    match validate_spotify_config(client_id, client_secret, redirect_url) {
+        Ok(()) => "Spotify OAuth settings are present".into(),
+        Err(reason) => reason.into(),
     }
 }
 
@@ -109,7 +106,7 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
             playback_on_target: false,
             playback_device_name: None,
             now_playing: None,
-            summary: "Spotify client ID, client secret, and redirect URL are required".into(),
+            summary: spotify_config_error(config).into(),
             auth_url: None,
             token_cache_path,
         });
@@ -217,7 +214,7 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
 
 pub async fn start_auth(config: &AppConfig) -> Result<SpotifyAuthStart> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -233,7 +230,7 @@ pub async fn start_auth(config: &AppConfig) -> Result<SpotifyAuthStart> {
 
 pub fn prepare_auth(config: &mut AppConfig) -> Result<()> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     config.spotify_auth_state = rand::rng()
@@ -247,7 +244,7 @@ pub fn prepare_auth(config: &mut AppConfig) -> Result<()> {
 
 pub async fn finish_auth(config: &AppConfig, code_or_callback: &str) -> Result<SpotifyStatus> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -260,7 +257,7 @@ pub async fn finish_auth(config: &AppConfig, code_or_callback: &str) -> Result<S
 
 pub async fn finish_auth_via_local_callback(config: &AppConfig) -> Result<SpotifyStatus> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -281,7 +278,7 @@ pub async fn finish_auth_via_local_callback(config: &AppConfig) -> Result<Spotif
 
 pub async fn debug_auth_flow(config: &AppConfig) -> Result<SpotifyAuthDebug> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -300,7 +297,7 @@ pub async fn debug_auth_flow(config: &AppConfig) -> Result<SpotifyAuthDebug> {
 
 pub async fn toggle_on_tv(config: &AppConfig) -> Result<String> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -353,7 +350,7 @@ pub async fn toggle_on_tv(config: &AppConfig) -> Result<String> {
 
 pub async fn transfer_to_tv(config: &AppConfig) -> Result<String> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -377,7 +374,7 @@ pub async fn transfer_to_tv(config: &AppConfig) -> Result<String> {
 
 pub async fn toggle_playback(config: &AppConfig) -> Result<String> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -418,7 +415,7 @@ pub async fn toggle_playback(config: &AppConfig) -> Result<String> {
 
 pub async fn skip_next(config: &AppConfig) -> Result<String> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -434,7 +431,7 @@ pub async fn skip_next(config: &AppConfig) -> Result<String> {
 
 pub async fn skip_previous(config: &AppConfig) -> Result<String> {
     if !spotify_configured(config) {
-        bail!("Spotify client ID, client secret, and redirect URL are required");
+        bail!("{}", spotify_config_error(config));
     }
 
     let spotify = build_spotify(config)?;
@@ -456,9 +453,58 @@ pub async fn start_on_tv(config: &AppConfig) -> Result<String> {
 }
 
 fn spotify_configured(config: &AppConfig) -> bool {
-    !config.spotify_client_id.trim().is_empty()
-        && !config.spotify_client_secret.trim().is_empty()
-        && !config.spotify_redirect_url.trim().is_empty()
+    validate_spotify_config(
+        &config.spotify_client_id,
+        &config.spotify_client_secret,
+        &config.spotify_redirect_url,
+    )
+    .is_ok()
+}
+
+fn spotify_config_error(config: &AppConfig) -> &'static str {
+    validate_spotify_config(
+        &config.spotify_client_id,
+        &config.spotify_client_secret,
+        &config.spotify_redirect_url,
+    )
+    .expect_err("spotify_config_error called for an invalid config")
+}
+
+fn validate_spotify_config(
+    client_id: &str,
+    client_secret: &str,
+    redirect_url: &str,
+) -> Result<(), &'static str> {
+    if client_id.trim().is_empty() || client_secret.trim().is_empty() {
+        return Err("Spotify client ID and client secret are required");
+    }
+
+    validate_redirect_url(redirect_url)
+}
+
+fn validate_redirect_url(redirect_url: &str) -> Result<(), &'static str> {
+    let parsed = Url::parse(redirect_url.trim())
+        .map_err(|_| "Spotify redirect URL must be a valid HTTP loopback URL with a port")?;
+
+    if parsed.scheme() != "http" || parsed.port().is_none() {
+        return Err("Spotify redirect URL must be an HTTP loopback URL with a port");
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or("Spotify redirect URL must use a loopback IP address")?;
+    let host = host
+        .strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host);
+    let ip = host
+        .parse::<IpAddr>()
+        .map_err(|_| "Spotify redirect URL must use a loopback IP address")?;
+    if !ip.is_loopback() {
+        return Err("Spotify redirect URL must use a loopback IP address");
+    }
+
+    Ok(())
 }
 
 fn build_spotify(config: &AppConfig) -> Result<AuthCodeSpotify> {
@@ -871,6 +917,40 @@ mod tests {
             spotify_selected_device_id: selected_device_id.into(),
             ..AppConfig::default()
         }
+    }
+
+    #[test]
+    fn accepts_http_loopback_redirect_with_explicit_port() {
+        assert!(validate_redirect_url("http://127.0.0.1:8888/callback").is_ok());
+        assert!(validate_redirect_url("http://[::1]:8888/callback").is_ok());
+    }
+
+    #[test]
+    fn rejects_redirects_that_cannot_receive_a_local_callback() {
+        for redirect_url in [
+            "",
+            "http://127.0.0.1/callback",
+            "https://127.0.0.1:8888/callback",
+            "http://192.0.2.1:8888/callback",
+            "not a URL",
+        ] {
+            assert!(
+                validate_redirect_url(redirect_url).is_err(),
+                "expected redirect URL to be rejected: {redirect_url:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_summary_explains_invalid_redirect_configuration() {
+        assert_eq!(
+            status_summary("client", "secret", "http://127.0.0.1/callback"),
+            "Spotify redirect URL must be an HTTP loopback URL with a port"
+        );
+        assert_eq!(
+            status_summary("", "secret", "http://127.0.0.1:8888/callback"),
+            "Spotify client ID and client secret are required"
+        );
     }
 
     fn device(id: Option<&str>, name: &str, matches_hints: bool) -> SpotifyDevice {
