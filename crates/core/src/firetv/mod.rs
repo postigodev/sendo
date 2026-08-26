@@ -160,7 +160,7 @@ pub fn perform_action(ip: &str, action: FireTvAction) -> Result<String> {
             if awake {
                 Ok(format!("Fire TV at {target} is awake"))
             } else {
-                bail!("Fire TV at {target} did not wake after retries. Confirm the TV is powered on and still accepts ADB commands.")
+                bail!(fire_tv_not_awake_message(&target))
             }
         }
         FireTvAction::LaunchSpotify => {
@@ -190,7 +190,7 @@ pub fn prepare_spotify_session(ip: &str) -> Result<FireTvPrepResult> {
 
     let awake = ensure_awake(&target, 4)?;
     if !awake {
-        bail!("Fire TV at {target} did not wake after retries");
+        bail!(fire_tv_not_awake_message(&target));
     }
 
     open_spotify(&target)?;
@@ -288,7 +288,7 @@ pub fn launch_app(ip: &str, package_name: &str) -> Result<String> {
 
     let awake = ensure_awake(&target, 4)?;
     if !awake {
-        bail!("Fire TV at {target} did not wake after retries");
+        bail!(fire_tv_not_awake_message(&target));
     }
 
     run_adb(&["-s", &target, "shell", "monkey", "-p", package_name, "1"])?;
@@ -308,6 +308,12 @@ fn adb_unavailable_message(error: &anyhow::Error) -> String {
 fn fire_tv_unreachable_message(target: &str) -> String {
     format!(
         "Fire TV at {target} is not reachable over ADB. Check the IP address, make sure the TV is on the same network, enable ADB debugging, accept the debugging prompt on the TV, then retry."
+    )
+}
+
+fn fire_tv_not_awake_message(target: &str) -> String {
+    format!(
+        "Fire TV at {target} did not wake after retries. Confirm the TV is powered on and still accepts ADB commands."
     )
 }
 
@@ -591,6 +597,16 @@ mod tests {
         assert!(message.contains("same network"));
         assert!(message.contains("ADB debugging"));
         assert!(message.contains("debugging prompt"));
+    }
+
+    #[test]
+    fn fire_tv_not_awake_message_lists_power_and_adb_steps() {
+        let message = fire_tv_not_awake_message("192.168.1.50:5555");
+
+        assert!(message.contains("192.168.1.50:5555"));
+        assert!(message.contains("powered on"));
+        assert!(message.contains("ADB commands"));
+        assert!(message.contains("retries"));
     }
 }
 
