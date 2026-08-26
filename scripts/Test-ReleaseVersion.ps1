@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $SemVerPattern = '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+$WindowsBundleVersionPattern = '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?<prerelease>0|[1-9]\d*))?$'
 
 function Get-JsonVersion {
     param([string]$Path)
@@ -78,6 +79,17 @@ if ($distinctVersions.Count -ne 1) {
 $version = [string]$distinctVersions[0]
 if ($version -notmatch $SemVerPattern) {
     throw "Sendo version is not supported SemVer: $version"
+}
+
+$bundleVersionMatch = [regex]::Match($version, $WindowsBundleVersionPattern)
+if (-not $bundleVersionMatch.Success) {
+    throw "Sendo Windows bundle prerelease identifier must be numeric: $version"
+}
+if ($bundleVersionMatch.Groups['prerelease'].Success) {
+    [uint64]$prereleaseNumber = 0
+    if (-not [uint64]::TryParse($bundleVersionMatch.Groups['prerelease'].Value, [ref]$prereleaseNumber) -or $prereleaseNumber -gt 65535) {
+        throw "Sendo Windows bundle prerelease identifier cannot be greater than 65535: $version"
+    }
 }
 
 if (-not [string]::IsNullOrWhiteSpace($ExpectedTag)) {

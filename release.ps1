@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?$')]
+    [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(0|[1-9]\d*))?$')]
     [string]$Version,
 
     [switch]$DryRun
@@ -12,6 +12,13 @@ $ErrorActionPreference = 'Stop'
 $Repository = 'postigodev/sendo'
 $RepoRoot = $PSScriptRoot
 $Tag = "v$Version"
+$PrereleaseMatch = [regex]::Match($Version, '-(?<number>\d+)$')
+if ($PrereleaseMatch.Success) {
+    [uint64]$PrereleaseNumber = 0
+    if (-not [uint64]::TryParse($PrereleaseMatch.Groups['number'].Value, [ref]$PrereleaseNumber) -or $PrereleaseNumber -gt 65535) {
+        throw 'Windows MSI prerelease identifiers must be numeric and no greater than 65535.'
+    }
+}
 $VersionFiles = @(
     (Join-Path $RepoRoot 'apps/tauri/package.json'),
     (Join-Path $RepoRoot 'apps/tauri/src-tauri/Cargo.toml'),

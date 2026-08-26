@@ -1,6 +1,6 @@
 # Sendo distribution
 
-Sendo publishes Windows installers from Git tags. A tag matching `vX.Y.Z` (including SemVer prereleases such as `v0.2.0-rc.1`) is the only event that can build and publish a GitHub Release.
+Sendo publishes Windows installers from Git tags. A tag matching `vX.Y.Z` (including numeric SemVer prereleases such as `v0.2.0-1`) is the only event that can build and publish a GitHub Release. Because the Windows MSI target accepts only one numeric prerelease identifier, labels such as `-rc.1` are not supported.
 
 ## Install Sendo
 
