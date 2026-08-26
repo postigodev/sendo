@@ -35,7 +35,7 @@ function Set-JsonVersion {
     param([string]$Path, [string]$NewVersion)
     $content = Get-Content -Raw -LiteralPath $Path
     $regex = [regex]'(?m)("version"\s*:\s*")([^"]+)(")'
-    $updated = $regex.Replace($content, "`$1$NewVersion`$3", 1)
+    $updated = $regex.Replace($content, "`${1}$NewVersion`${3}", 1)
     if ($updated -eq $content) { throw "Could not update version in $Path" }
     Set-Utf8NoBomContent $Path $updated
 }
@@ -44,7 +44,7 @@ function Set-CargoVersion {
     param([string]$Path, [string]$NewVersion)
     $content = Get-Content -Raw -LiteralPath $Path
     $regex = [regex]'(?ms)(^\[package\]\s.*?^version\s*=\s*")([^"]+)(")'
-    $updated = $regex.Replace($content, "`$1$NewVersion`$3", 1)
+    $updated = $regex.Replace($content, "`${1}$NewVersion`${3}", 1)
     if ($updated -eq $content) { throw "Could not update [package] version in $Path" }
     Set-Utf8NoBomContent $Path $updated
 }
