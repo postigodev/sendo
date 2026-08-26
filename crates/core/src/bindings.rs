@@ -253,7 +253,9 @@ fn normalized_favorite_order(
 mod tests {
     use super::*;
     use crate::firetv::FireTvAction;
-    use std::{env, fs, path::PathBuf};
+    use std::{env, fs, path::PathBuf, sync::Mutex};
+
+    static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn binding(id: &str, label: &str, favorite: bool, favorite_order: u32) -> Binding {
         Binding {
@@ -269,6 +271,7 @@ mod tests {
     }
 
     fn with_temp_home(test: impl FnOnce()) {
+        let _env_guard = TEST_ENV_LOCK.lock().expect("lock test environment");
         let original_home = env::var_os("HOME");
         let original_appdata = env::var_os("APPDATA");
         let temp_home =
