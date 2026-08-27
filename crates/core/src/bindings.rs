@@ -94,8 +94,24 @@ pub fn save_binding(mut binding: Binding) -> Result<BindingStore> {
 pub fn delete_binding(id: &str) -> Result<BindingStore> {
     let mut store = list_bindings()?;
     store.bindings.retain(|binding| binding.id != id);
+    normalize_favorite_orders(&mut store);
     write_store(&store)?;
     Ok(store)
+}
+
+fn normalize_favorite_orders(store: &mut BindingStore) {
+    let mut favorite_indices = store
+        .bindings
+        .iter()
+        .enumerate()
+        .filter(|(_, binding)| binding.favorite)
+        .map(|(index, binding)| (index, binding.favorite_order))
+        .collect::<Vec<_>>();
+    favorite_indices.sort_by_key(|(_, favorite_order)| *favorite_order);
+
+    for (order, (index, _)) in favorite_indices.into_iter().enumerate() {
+        store.bindings[index].favorite_order = order as u32 + 1;
+    }
 }
 
 pub async fn execute_binding(id: &str, config: &AppConfig) -> Result<String> {
@@ -363,7 +379,7 @@ mod tests {
             let reloaded = list_bindings().expect("reload after delete");
             assert_eq!(reloaded.bindings.len(), 1);
             assert_eq!(reloaded.bindings[0].id, "spotify");
-            assert_eq!(reloaded.bindings[0].favorite_order, 2);
+            assert_eq!(reloaded.bindings[0].favorite_order, 1);
         });
     }
 
