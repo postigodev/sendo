@@ -56,14 +56,14 @@ currently active Spotify device.
 ### Install dependencies
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\tauri
+cd <clone-directory>\apps\tauri
 pnpm install
 ```
 
 ### Run the desktop app
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\tauri
+cd <clone-directory>\apps\tauri
 pnpm tauri dev
 ```
 
@@ -74,7 +74,7 @@ target device, then run `Start Spotify on TV`.
 ### Run the site
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\site
+cd <clone-directory>\apps\site
 corepack pnpm install
 corepack pnpm dev
 ```
@@ -86,21 +86,21 @@ Before opening a pull request, run the checks relevant to your change.
 ### Rust
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote
+cd <clone-directory>
 cargo check
 ```
 
 ### Tauri frontend
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\tauri
+cd <clone-directory>\apps\tauri
 cmd /c npm run build
 ```
 
 ### Site
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\site
+cd <clone-directory>\apps\site
 corepack pnpm build
 ```
 
