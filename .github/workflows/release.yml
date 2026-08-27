@@ -82,6 +82,12 @@ jobs:
         run: |
           corepack pnpm install --frozen-lockfile
           corepack pnpm build
+      - name: Check site
+        working-directory: apps/site
+        shell: pwsh
+        run: |
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm build
       - name: Require reproducible checkout
         shell: pwsh
         run: |
