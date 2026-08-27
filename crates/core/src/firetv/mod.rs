@@ -113,7 +113,10 @@ pub fn get_status(ip: &str) -> Result<FireTvStatus> {
         });
     }
 
-    let connected = connect(&target).unwrap_or(false);
+    let (connected, connection_error) = match connect(&target) {
+        Ok(connected) => (connected, None),
+        Err(error) => (false, Some(error)),
+    };
     let screen_awake = if connected {
         screen_is_on(&target).ok()
     } else {
@@ -126,6 +129,8 @@ pub fn get_status(ip: &str) -> Result<FireTvStatus> {
             Some(false) => format!("Connected to Fire TV at {target}; screen appears asleep"),
             None => format!("Connected to Fire TV at {target}; power state unavailable"),
         }
+    } else if let Some(error) = connection_error {
+        fire_tv_connection_error_message(&target, &error)
     } else {
         fire_tv_unreachable_message(&target)
     };
@@ -308,6 +313,12 @@ fn adb_unavailable_message(error: &anyhow::Error) -> String {
 fn fire_tv_unreachable_message(target: &str) -> String {
     format!(
         "Fire TV at {target} is not reachable over ADB. Check the IP address, make sure the TV is on the same network, enable ADB debugging, accept the debugging prompt on the TV, then retry."
+    )
+}
+
+fn fire_tv_connection_error_message(target: &str, error: &anyhow::Error) -> String {
+    format!(
+        "Could not connect to Fire TV at {target}. Check the IP address, network, and ADB debugging settings, then retry. Details: {error}"
     )
 }
 
@@ -597,6 +608,18 @@ mod tests {
         assert!(message.contains("same network"));
         assert!(message.contains("ADB debugging"));
         assert!(message.contains("debugging prompt"));
+    }
+
+    #[test]
+    fn fire_tv_connection_error_message_preserves_the_root_cause() {
+        let message = fire_tv_connection_error_message(
+            "192.168.1.50:5555",
+            &anyhow!("adb connect timed out"),
+        );
+
+        assert!(message.contains("192.168.1.50:5555"));
+        assert!(message.contains("adb connect timed out"));
+        assert!(message.contains("ADB debugging"));
     }
 
     #[test]
