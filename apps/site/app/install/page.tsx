@@ -114,7 +114,7 @@ export default async function InstallPage() {
         <section className="pb-4">
           <div className="page-shell">
             <div className="surface-panel overflow-hidden p-0">
-              <div className="grid divide-y divide-white/10 md:grid-cols-4 md:divide-x md:divide-y-0">
+              <div className="grid md:grid-cols-3 lg:grid-cols-5 [&>*]:border-b [&>*]:border-white/10 [&>*:last-child]:border-b-0 md:[&>*]:border-b-0 md:[&>*]:border-l md:[&>*]:border-t md:[&>*:nth-child(-n+3)]:border-t-0 md:[&>*:first-child]:border-l-0 md:[&>*:nth-child(4)]:border-l-0 lg:[&>*]:border-b-0 lg:[&>*]:border-t-0 lg:[&>*:nth-child(4)]:border-l">
                 {requirements.map((item, index) => (
                   <div
                     key={item}
