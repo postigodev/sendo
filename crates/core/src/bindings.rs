@@ -68,6 +68,12 @@ pub fn save_binding(mut binding: Binding) -> Result<BindingStore> {
         bail!("Binding label is required");
     }
 
+    if let BindingAction::LaunchApp { package_name } = &binding.action {
+        if package_name.trim().is_empty() {
+            bail!("LaunchApp package name is required");
+        }
+    }
+
     binding.hotkey = binding.hotkey.trim().to_string();
 
     if !binding.hotkey.is_empty()
@@ -380,6 +386,26 @@ mod tests {
             assert_eq!(reloaded.bindings.len(), 1);
             assert_eq!(reloaded.bindings[0].id, "spotify");
             assert_eq!(reloaded.bindings[0].favorite_order, 1);
+        });
+    }
+
+    #[test]
+    fn rejects_launch_app_without_a_package_name_before_writing() {
+        with_temp_home(|| {
+            let invalid = Binding {
+                id: "launch-empty".to_string(),
+                label: "Launch app".to_string(),
+                hotkey: String::new(),
+                favorite: false,
+                favorite_order: 0,
+                action: BindingAction::LaunchApp {
+                    package_name: "  ".to_string(),
+                },
+            };
+
+            let error = save_binding(invalid).expect_err("empty package name must be rejected");
+            assert_eq!(error.to_string(), "LaunchApp package name is required");
+            assert!(!stored_bindings_path().exists());
         });
     }
 
