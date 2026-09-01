@@ -210,10 +210,13 @@ fn apply_startup_preferences(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn notify_tray_error(app: &AppHandle, title: &str, message: &str) {
-    let _ = app
+    if let Err(error) = app
         .notification()
         .builder()
         .title(title)
         .body(message)
-        .show();
+        .show()
+    {
+        eprintln!("failed to show tray error notification: {error}");
+    }
 }
