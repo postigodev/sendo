@@ -116,22 +116,22 @@ speaker, or browser session is available.
 ### Clone and install
 
 ```powershell
-git clone <repo-url>
-cd desk-remote\apps\tauri
+git clone <repo-url> sendo
+cd sendo\apps\tauri
 pnpm install
 ```
 
 ### Run in development
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\tauri
+cd sendo\apps\tauri
 pnpm tauri dev
 ```
 
 ### Build Windows installers
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\tauri
+cd sendo\apps\tauri
 corepack pnpm exec tauri build --bundles nsis,msi
 ```
 
@@ -148,12 +148,12 @@ source archives are not portable Sendo applications.
 ### Validation
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote
+cd sendo
 cargo check
 ```
 
 ```powershell
-cd C:\Users\akuma\repos\desk-remote\apps\tauri
+cd sendo\apps\tauri
 .\node_modules\.bin\tsc.CMD --noEmit
 ```
 
