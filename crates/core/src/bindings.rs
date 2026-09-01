@@ -275,7 +275,7 @@ fn normalized_favorite_order(
 mod tests {
     use super::*;
     use crate::firetv::FireTvAction;
-    use std::{env, fs, path::PathBuf, sync::Mutex};
+    use std::{env, ffi::OsString, fs, path::PathBuf, sync::Mutex};
 
     static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -292,31 +292,54 @@ mod tests {
         }
     }
 
-    fn with_temp_home(test: impl FnOnce()) {
-        let _env_guard = TEST_ENV_LOCK.lock().expect("lock test environment");
-        let original_home = env::var_os("HOME");
-        let original_appdata = env::var_os("APPDATA");
-        let temp_home =
-            env::temp_dir().join(format!("sendo-bindings-test-{}", generate_binding_id()));
+    struct TestHomeGuard {
+        original_home: Option<OsString>,
+        original_appdata: Option<OsString>,
+        temp_home: PathBuf,
+    }
 
-        env::set_var("HOME", &temp_home);
-        env::remove_var("APPDATA");
+    impl TestHomeGuard {
+        fn new() -> Self {
+            let original_home = env::var_os("HOME");
+            let original_appdata = env::var_os("APPDATA");
+            let temp_home =
+                env::temp_dir().join(format!("sendo-bindings-test-{}", generate_binding_id()));
 
-        test();
-
-        if let Some(home) = original_home {
-            env::set_var("HOME", home);
-        } else {
-            env::remove_var("HOME");
-        }
-
-        if let Some(appdata) = original_appdata {
-            env::set_var("APPDATA", appdata);
-        } else {
+            env::set_var("HOME", &temp_home);
             env::remove_var("APPDATA");
-        }
 
-        let _ = fs::remove_dir_all(temp_home);
+            Self {
+                original_home,
+                original_appdata,
+                temp_home,
+            }
+        }
+    }
+
+    impl Drop for TestHomeGuard {
+        fn drop(&mut self) {
+            if let Some(home) = self.original_home.take() {
+                env::set_var("HOME", home);
+            } else {
+                env::remove_var("HOME");
+            }
+
+            if let Some(appdata) = self.original_appdata.take() {
+                env::set_var("APPDATA", appdata);
+            } else {
+                env::remove_var("APPDATA");
+            }
+
+            let _ = fs::remove_dir_all(&self.temp_home);
+        }
+    }
+
+    fn with_temp_home(test: impl FnOnce()) {
+        let _env_guard = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _home_guard = TestHomeGuard::new();
+        test();
     }
 
     fn stored_bindings_path() -> PathBuf {
@@ -407,6 +430,19 @@ mod tests {
             assert_eq!(error.to_string(), "LaunchApp package name is required");
             assert!(!stored_bindings_path().exists());
         });
+    }
+
+    #[test]
+    fn restores_test_environment_when_the_body_panics() {
+        let original_home = env::var_os("HOME");
+        let original_appdata = env::var_os("APPDATA");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            with_temp_home(|| panic!("simulated test panic"));
+        }));
+
+        assert!(result.is_err());
+        assert_eq!(env::var_os("HOME"), original_home);
+        assert_eq!(env::var_os("APPDATA"), original_appdata);
     }
 
     #[test]
