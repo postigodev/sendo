@@ -67,6 +67,23 @@ a {
     @apply border-white/10;
   }
 
+  .requirements-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 768px) {
+    .requirements-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .requirements-grid {
+      grid-template-columns: repeat(5, 1fr);
+    }
+  }
+
   .text-balance {
     text-wrap: balance;
   }

@@ -114,11 +114,11 @@ export default async function InstallPage() {
         <section className="pb-4">
           <div className="page-shell">
             <div className="surface-panel overflow-hidden p-0">
-              <div className="grid divide-y divide-white/10 md:grid-cols-4 md:divide-x md:divide-y-0">
+              <div className="requirements-grid gap-px bg-white/10">
                 {requirements.map((item, index) => (
                   <div
                     key={item}
-                    className="group px-5 py-5 transition-colors hover:bg-cyan-300/[0.025] md:px-6 md:py-6"
+                    className="group bg-white/[0.035] px-5 py-5 transition-colors hover:bg-cyan-300/[0.025] md:px-6 md:py-6"
                   >
                     <div className="mb-4 flex items-center justify-between">
                       <span className="font-mono text-[11px] font-semibold tracking-[0.22em] text-cyan-300/70">
