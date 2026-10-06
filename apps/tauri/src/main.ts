@@ -655,6 +655,7 @@ async function startSpotifyAuth() {
   try {
     await persistCurrentConfig();
     const result = await api.spotifyStartAuth();
+    currentConfig = await api.getSettings();
     currentSpotifyDebug = await api.spotifyDebugAuthFlow();
     spotifyAuthUrl = result.url;
     render();
@@ -1054,13 +1055,14 @@ function syncConfigFromInputs() {
   currentConfig = {
     firetv_ip: document.querySelector<HTMLInputElement>("#firetv-ip")?.value.trim() ?? currentConfig.firetv_ip,
     spotify_client_id: document.querySelector<HTMLInputElement>("#spotify-client-id")?.value.trim() ?? currentConfig.spotify_client_id,
-    spotify_client_secret: document.querySelector<HTMLInputElement>("#spotify-client-secret")?.value.trim() ?? currentConfig.spotify_client_secret,
     spotify_redirect_url: document.querySelector<HTMLInputElement>("#spotify-redirect-url")?.value.trim() ?? currentConfig.spotify_redirect_url,
     spotify_selected_device_id:
       document.querySelector<HTMLInputElement>("#spotify-selected-device-id")?.value.trim() ??
       currentConfig.spotify_selected_device_id,
     spotify_target_hints: document.querySelector<HTMLInputElement>("#spotify-target-hints")?.value.trim() ?? currentConfig.spotify_target_hints,
     spotify_auth_state: currentConfig.spotify_auth_state,
+    spotify_auth_verifier: currentConfig.spotify_auth_verifier,
+    spotify_auth_url: currentConfig.spotify_auth_url,
     launch_on_startup:
       document.querySelector<HTMLInputElement>("#launch-on-startup")?.checked ??
       currentConfig.launch_on_startup,

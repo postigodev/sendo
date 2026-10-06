@@ -1,11 +1,12 @@
 export type AppConfig = {
   firetv_ip: string;
   spotify_client_id: string;
-  spotify_client_secret: string;
   spotify_redirect_url: string;
   spotify_selected_device_id: string;
   spotify_target_hints: string;
   spotify_auth_state: string;
+  spotify_auth_verifier: string;
+  spotify_auth_url: string;
   launch_on_startup: boolean;
   start_minimized_to_tray: boolean;
 };

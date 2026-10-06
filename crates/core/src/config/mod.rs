@@ -10,11 +10,12 @@ use std::{
 pub struct AppConfig {
     pub firetv_ip: String,
     pub spotify_client_id: String,
-    pub spotify_client_secret: String,
     pub spotify_redirect_url: String,
     pub spotify_selected_device_id: String,
     pub spotify_target_hints: String,
     pub spotify_auth_state: String,
+    pub spotify_auth_verifier: String,
+    pub spotify_auth_url: String,
     pub launch_on_startup: bool,
     pub start_minimized_to_tray: bool,
 }
@@ -47,9 +48,11 @@ impl AppConfig {
     pub fn configured_services(&self) -> ConfiguredServices {
         ConfiguredServices {
             firetv_ready: !self.firetv_ip.trim().is_empty(),
-            spotify_ready: !self.spotify_client_id.trim().is_empty()
-                && !self.spotify_client_secret.trim().is_empty()
-                && !self.spotify_redirect_url.trim().is_empty(),
+            spotify_ready: crate::spotify::validate_spotify_config(
+                &self.spotify_client_id,
+                &self.spotify_redirect_url,
+            )
+            .is_ok(),
         }
     }
 
@@ -227,5 +230,39 @@ mod tests {
             fs::read_to_string(current.join("spotify-token.json")).unwrap(),
             "cached-token"
         );
+    }
+
+    #[test]
+    fn spotify_public_client_config_is_ready_without_a_secret() {
+        let mut config = AppConfig {
+            spotify_client_id: "public-client".into(),
+            spotify_redirect_url: "http://127.0.0.1:8888/callback".into(),
+            ..Default::default()
+        };
+        assert!(config.configured_services().spotify_ready);
+        config.spotify_client_id = " ".into();
+        assert!(!config.configured_services().spotify_ready);
+        config.spotify_client_id = "public-client".into();
+        config.spotify_redirect_url = "http://192.0.2.1:8888/callback".into();
+        assert!(!config.configured_services().spotify_ready);
+    }
+
+    #[test]
+    fn legacy_spotify_secret_is_ignored_and_removed_on_next_save() {
+        let directory = temp_dir();
+        let path = directory.0.join("config.json");
+        let config: AppConfig = serde_json::from_value(serde_json::json!({
+            "spotify_client_id": "public-client", "spotify_client_secret": "legacy-secret",
+            "spotify_redirect_url": "http://127.0.0.1:8888/callback",
+            "spotify_selected_device_id": "tv", "launch_on_startup": true
+        }))
+        .unwrap();
+        assert!(config.configured_services().spotify_ready);
+        config.save_to_path(&path).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved.get("spotify_client_secret").is_none());
+        assert_eq!(saved["spotify_selected_device_id"], "tv");
+        assert_eq!(saved["launch_on_startup"], true);
     }
 }

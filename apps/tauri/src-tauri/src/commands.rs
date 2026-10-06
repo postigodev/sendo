@@ -109,7 +109,6 @@ pub async fn health_check() -> Result<HealthStatus, String> {
             firetv_summary: firetv::status_summary(&config.firetv_ip),
             spotify_summary: spotify::status_summary(
                 &config.spotify_client_id,
-                &config.spotify_client_secret,
                 &config.spotify_redirect_url,
             ),
         })
