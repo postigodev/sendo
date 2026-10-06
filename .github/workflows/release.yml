@@ -3,6 +3,8 @@ name: Release
 on:
   pull_request:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -29,7 +31,7 @@ jobs:
         name: Validate release identity
         shell: pwsh
         env:
-          EXPECTED_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+          EXPECTED_TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
         run: |
           $info = ./scripts/Test-ReleaseVersion.ps1 -ExpectedTag $env:EXPECTED_TAG -PassThru
           "version=$($info.Version)" >> $env:GITHUB_OUTPUT
@@ -61,7 +63,8 @@ jobs:
         run: |
           cargo fmt --all -- --check
           cargo check --workspace --locked
-          cargo test --workspace --locked
+          # Binding persistence tests mutate process-wide HOME/APPDATA.
+          cargo test --workspace --locked -- --test-threads=1
       - name: Parse release scripts
         shell: pwsh
         run: |
@@ -76,6 +79,7 @@ jobs:
             }
           }
           if ($failed) { exit 1 }
+          ./scripts/Test-ValidationWorkflow.ps1
       - name: Check frontend
         working-directory: apps/tauri
         shell: pwsh
@@ -96,7 +100,7 @@ jobs:
 
   build-windows:
     name: Build Windows installers
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [plan, validate]
     runs-on: windows-2022
     steps:
@@ -125,7 +129,7 @@ jobs:
 
   publish:
     name: Publish verified draft
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [plan, build-windows]
     runs-on: windows-2022
     permissions:
