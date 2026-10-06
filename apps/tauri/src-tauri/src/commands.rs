@@ -9,6 +9,8 @@ use serde::Serialize;
 use tauri::{async_runtime, command, AppHandle};
 use tauri_plugin_autostart::ManagerExt;
 
+static SETTINGS_SAVE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[derive(Serialize)]
 pub struct AppInfo {
     version: String,
@@ -39,8 +41,26 @@ pub fn get_app_info(app: AppHandle) -> AppInfo {
 #[command]
 pub async fn save_settings(app: AppHandle, config: AppConfig) -> Result<AppConfig, String> {
     run_blocking(move || {
-        sync_autostart_setting(&app, &config).map_err(|e| e.to_string())?;
-        config.save().map_err(|e| e.to_string())?;
+        let _guard = SETTINGS_SAVE_LOCK.lock().map_err(|_| {
+            "Settings save lock is unavailable. Restart Sendo and retry.".to_string()
+        })?;
+        let manager = app.autolaunch();
+        let previous = manager.is_enabled().map_err(|e| {
+            format!("Could not read system autostart state. Settings were not saved: {e}")
+        })?;
+        save_with_autostart(
+            config.launch_on_startup,
+            previous,
+            |enabled| {
+                if enabled {
+                    manager.enable()?;
+                } else {
+                    manager.disable()?;
+                }
+                Ok(())
+            },
+            || config.save(),
+        )?;
         Ok(config)
     })
     .await
@@ -219,16 +239,33 @@ pub async fn spotify_toggle_tv() -> Result<ActionResult, String> {
     Ok(ActionResult { message })
 }
 
-fn sync_autostart_setting(app: &AppHandle, config: &AppConfig) -> anyhow::Result<()> {
-    let autostart_manager = app.autolaunch();
-    let is_enabled = autostart_manager.is_enabled()?;
-
-    match (config.launch_on_startup, is_enabled) {
-        (true, false) => autostart_manager.enable()?,
-        (false, true) => autostart_manager.disable()?,
-        _ => {}
+// OS registration and file replacement cannot share a crash-atomic transaction.
+// Compensate reported failures here; apply_startup_preferences already attempts
+// to reconcile the OS registration with the persisted preference on next startup.
+fn save_with_autostart(
+    desired: bool,
+    previous: bool,
+    mut set_enabled: impl FnMut(bool) -> anyhow::Result<()>,
+    save: impl FnOnce() -> anyhow::Result<()>,
+) -> Result<(), String> {
+    let changed = desired != previous;
+    let result = (|| -> anyhow::Result<()> {
+        if changed {
+            set_enabled(desired)
+                .map_err(|e| anyhow::anyhow!("Could not synchronize system autostart: {e:#}"))?;
+        }
+        save().map_err(|e| anyhow::anyhow!("Could not persist settings: {e:#}"))
+    })();
+    if let Err(error) = result {
+        if changed {
+            if let Err(rollback) = set_enabled(previous) {
+                return Err(format!("Settings were not saved: {error:#}. Could not restore previous autostart state: {rollback:#}. Check system startup settings and retry."));
+            }
+        }
+        return Err(format!(
+            "Settings were not saved: {error:#}. Retry after resolving this error."
+        ));
     }
-
     Ok(())
 }
 
@@ -280,4 +317,102 @@ pub async fn start_spotify_on_tv() -> Result<ActionResult, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(ActionResult { message })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::{Cell, RefCell};
+
+    #[test]
+    fn settings_write_failure_restores_autostart() {
+        let enabled = Cell::new(false);
+        let changes = RefCell::new(Vec::new());
+        let result = save_with_autostart(
+            true,
+            false,
+            |value| {
+                enabled.set(value);
+                changes.borrow_mut().push(value);
+                Ok(())
+            },
+            || {
+                assert!(enabled.get());
+                anyhow::bail!("disk full")
+            },
+        );
+        assert!(!enabled.get());
+        assert_eq!(*changes.borrow(), vec![true, false]);
+        assert!(result.unwrap_err().contains("disk full"));
+    }
+
+    #[test]
+    fn autostart_failure_prevents_saving_and_reports_failed_compensation() {
+        let saved = Cell::new(false);
+        let changes = RefCell::new(Vec::new());
+        let result = save_with_autostart(
+            true,
+            false,
+            |value| {
+                changes.borrow_mut().push(value);
+                anyhow::bail!("startup registry denied")
+            },
+            || {
+                saved.set(true);
+                Ok(())
+            },
+        );
+        assert!(!saved.get());
+        assert_eq!(*changes.borrow(), vec![true, false]);
+        let error = result.unwrap_err();
+        assert!(error.contains("startup registry denied"));
+        assert!(error.contains("restore"));
+    }
+
+    #[test]
+    fn settings_failure_reports_both_save_and_rollback_errors() {
+        let result = save_with_autostart(
+            true,
+            false,
+            |value| {
+                if value {
+                    Ok(())
+                } else {
+                    anyhow::bail!("rollback denied")
+                }
+            },
+            || anyhow::bail!("disk full"),
+        );
+        let error = result.unwrap_err();
+        assert!(error.contains("disk full"));
+        assert!(error.contains("rollback denied"));
+    }
+
+    #[test]
+    fn settings_save_changes_autostart_only_when_needed() {
+        for (desired, current, expected) in [
+            (true, false, vec![true]),
+            (false, true, vec![false]),
+            (true, true, vec![]),
+            (false, false, vec![]),
+        ] {
+            let changes = RefCell::new(Vec::new());
+            let saved = Cell::new(false);
+            save_with_autostart(
+                desired,
+                current,
+                |value| {
+                    changes.borrow_mut().push(value);
+                    Ok(())
+                },
+                || {
+                    saved.set(true);
+                    Ok(())
+                },
+            )
+            .unwrap();
+            assert!(saved.get());
+            assert_eq!(*changes.borrow(), expected);
+        }
+    }
 }

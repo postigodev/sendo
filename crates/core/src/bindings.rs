@@ -6,12 +6,7 @@ use crate::{
 use anyhow::{bail, Context, Result};
 use rand::{distr::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashSet,
-    fs::{self, OpenOptions},
-    io::Write,
-    path::PathBuf,
-};
+use std::{collections::HashSet, fs, path::PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -188,90 +183,9 @@ fn bindings_path() -> Result<PathBuf> {
 
 fn write_store(store: &BindingStore) -> Result<()> {
     let path = bindings_path()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create bindings dir at {}", parent.display()))?;
-    }
-
     let raw = serde_json::to_string_pretty(store).context("failed to serialize bindings")?;
-    let temp_path = path.with_extension(format!("json.tmp-{}", generate_binding_id()));
-    let write_result = (|| -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)
-            .with_context(|| {
-                format!(
-                    "failed to create temporary bindings file at {}",
-                    temp_path.display()
-                )
-            })?;
-        file.write_all(raw.as_bytes()).with_context(|| {
-            format!(
-                "failed to write temporary bindings file at {}",
-                temp_path.display()
-            )
-        })?;
-        file.sync_all().with_context(|| {
-            format!(
-                "failed to sync temporary bindings file at {}",
-                temp_path.display()
-            )
-        })?;
-        Ok(())
-    })();
-
-    if let Err(error) = write_result {
-        let _ = fs::remove_file(&temp_path);
-        return Err(error);
-    }
-
-    if let Err(error) = replace_file(&temp_path, &path) {
-        let _ = fs::remove_file(&temp_path);
-        return Err(error)
-            .with_context(|| format!("failed to replace bindings file at {}", path.display()));
-    }
-
-    Ok(())
+    crate::persistence::atomic_write(&path, raw.as_bytes())
 }
-
-#[cfg(not(windows))]
-fn replace_file(temp_path: &PathBuf, path: &PathBuf) -> std::io::Result<()> {
-    fs::rename(temp_path, path)
-}
-
-#[cfg(windows)]
-fn replace_file(temp_path: &PathBuf, path: &PathBuf) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
-
-    let source: Vec<u16> = temp_path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    let destination: Vec<u16> = path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-
-    if unsafe {
-        MoveFileExW(
-            source.as_ptr(),
-            destination.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    } == 0
-    {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
-}
-
 fn generate_binding_id() -> String {
     rand::rng()
         .sample_iter(&Alphanumeric)
@@ -556,6 +470,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn failed_reorder_replacement_keeps_the_complete_old_order() {
+        use std::fs::OpenOptions;
         use std::os::windows::fs::OpenOptionsExt;
         with_temp_home(|| {
             save_binding(binding("a", "A", true, 3)).unwrap();
