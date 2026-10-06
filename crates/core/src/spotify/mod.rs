@@ -447,9 +447,39 @@ pub async fn skip_previous(config: &AppConfig) -> Result<String> {
 
 pub async fn start_on_tv(config: &AppConfig) -> Result<String> {
     let firetv_result = crate::firetv::prepare_spotify_session(&config.firetv_ip)?;
-    let spotify_result = toggle_on_tv(config).await?;
+    if !spotify_configured(config) {
+        bail!("{}", spotify_config_error(config));
+    }
+    let spotify = build_spotify(config)?;
+    ensure_token(&spotify).await?;
+    let target = resolve_control_target(config, &spotify).await?;
+    let spotify_result = ensure_target_playing(&spotify, &target).await?;
 
     Ok(format!("{}. {}", firetv_result.summary, spotify_result))
+}
+
+async fn ensure_target_playing(spotify: &AuthCodeSpotify, target: &TargetDevice) -> Result<String> {
+    let playback = spotify
+        .current_playback(None, Some(&[AdditionalType::Episode]))
+        .await
+        .context("failed to fetch current Spotify playback")?;
+    let on_target =
+        playback.as_ref().and_then(|item| item.device.id.as_deref()) == Some(target.id.as_str());
+    if on_target && playback.as_ref().is_some_and(|item| item.is_playing) {
+        return Ok(format!("Spotify is already playing on {}", target.name));
+    }
+    if !on_target {
+        spotify
+            .transfer_playback(&target.id, Some(false))
+            .await
+            .context("failed to transfer Spotify playback to TV")?;
+        sleep(Duration::from_millis(300)).await;
+    }
+    spotify
+        .resume_playback(Some(&target.id), None)
+        .await
+        .context("failed to resume playback on TV")?;
+    Ok(format!("Started Spotify on {}", target.name))
 }
 
 fn spotify_configured(config: &AppConfig) -> bool {
@@ -911,6 +941,139 @@ fn ensure_token_cache_dir() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn playback_client(
+        device_id: &str,
+        is_playing: bool,
+        write_statuses: &[u16],
+    ) -> (AuthCodeSpotify, tokio::task::JoinHandle<Vec<String>>) {
+        use tokio::io::AsyncReadExt;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let body = serde_json::json!({
+            "device": {"id": device_id, "name": "TV", "is_active": true,
+                "is_private_session": false, "is_restricted": false,
+                "type": "TV", "volume_percent": 50},
+            "repeat_state": "off", "shuffle_state": false,
+            "timestamp": 0, "is_playing": is_playing, "item": null,
+            "currently_playing_type": "unknown", "actions": {"disallows": {}}
+        })
+        .to_string();
+        let mut responses = vec![(200, body)];
+        responses.extend(write_statuses.iter().map(|status| (*status, String::new())));
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for (status, body) in responses {
+                let (mut stream, _) = timeout(Duration::from_secs(5), listener.accept())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let mut reader = BufReader::new(&mut stream);
+                let mut request = String::new();
+                let mut length = 0;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).await.unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse::<usize>().unwrap();
+                    }
+                    request.push_str(&line);
+                }
+                let mut payload = vec![0; length];
+                reader.read_exact(&mut payload).await.unwrap();
+                request.push_str(std::str::from_utf8(&payload).unwrap());
+                requests.push(request);
+                stream.write_all(format!(
+                    "HTTP/1.1 {status} Test\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()
+                ).as_bytes()).await.unwrap();
+            }
+            requests
+        });
+        let spotify = AuthCodeSpotify::from_token_with_config(
+            rspotify::Token {
+                access_token: "test-token".into(),
+                ..Default::default()
+            },
+            Credentials::default(),
+            OAuth::default(),
+            Config {
+                api_base_url: format!("http://{address}/"),
+                token_refreshing: false,
+                ..Default::default()
+            },
+        );
+        (spotify, server)
+    }
+
+    #[tokio::test]
+    async fn start_leaves_already_playing_target_running_on_repeated_calls() {
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "TV".into(),
+        };
+        for _ in 0..2 {
+            let (spotify, server) = playback_client("tv", true, &[]).await;
+            assert_eq!(
+                ensure_target_playing(&spotify, &target).await.unwrap(),
+                "Spotify is already playing on TV"
+            );
+            let requests = server.await.unwrap();
+            assert_eq!(requests.len(), 1);
+            assert!(requests[0].starts_with("GET /me/player?"));
+        }
+    }
+
+    #[tokio::test]
+    async fn start_resumes_paused_target_and_routes_playback_elsewhere() {
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "TV".into(),
+        };
+        let (spotify, server) = playback_client("tv", false, &[204]).await;
+        ensure_target_playing(&spotify, &target).await.unwrap();
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[1].starts_with("PUT /me/player/play?device_id=tv "));
+
+        let (spotify, server) = playback_client("phone", true, &[204, 204]).await;
+        ensure_target_playing(&spotify, &target).await.unwrap();
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 3);
+        assert!(requests[1].starts_with("PUT /me/player "));
+        assert!(requests[1].contains("\"device_ids\":[\"tv\"]"));
+        assert!(requests[2].starts_with("PUT /me/player/play?device_id=tv "));
+    }
+
+    #[tokio::test]
+    async fn start_reports_transfer_and_resume_failures() {
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "TV".into(),
+        };
+        for (device, statuses, expected) in [
+            (
+                "phone",
+                vec![500],
+                "failed to transfer Spotify playback to TV",
+            ),
+            ("phone", vec![204, 500], "failed to resume playback on TV"),
+            ("tv", vec![500], "failed to resume playback on TV"),
+        ] {
+            let (spotify, server) = playback_client(device, false, &statuses).await;
+            assert_eq!(
+                ensure_target_playing(&spotify, &target)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                expected
+            );
+            server.await.unwrap();
+        }
+    }
 
     fn config(selected_device_id: &str) -> AppConfig {
         AppConfig {
