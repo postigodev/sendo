@@ -7,6 +7,7 @@ use anyhow::{bail, Context, Result};
 use rand::{distr::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     fs::{self, OpenOptions},
     io::Write,
     path::PathBuf,
@@ -118,6 +119,45 @@ fn normalize_favorite_orders(store: &mut BindingStore) {
     for (order, (index, _)) in favorite_indices.into_iter().enumerate() {
         store.bindings[index].favorite_order = order as u32 + 1;
     }
+}
+
+pub fn reorder_favorites(ids: &[String]) -> Result<BindingStore> {
+    let mut store = list_bindings()?;
+    let favorite_count = store
+        .bindings
+        .iter()
+        .filter(|binding| binding.favorite)
+        .count();
+    if ids.len() != favorite_count {
+        bail!("Favorite order must include every favorite exactly once. Reload Quick Access and try again.");
+    }
+    let mut seen = HashSet::new();
+    for id in ids {
+        let binding = store
+            .bindings
+            .iter()
+            .find(|binding| &binding.id == id)
+            .with_context(|| {
+                format!("Binding not found: {id}. Reload Quick Access and try again.")
+            })?;
+        if !binding.favorite {
+            bail!("Binding is not a favorite: {id}");
+        }
+        if !seen.insert(id) {
+            bail!("Duplicate binding in favorite order: {id}");
+        }
+    }
+    for (index, id) in ids.iter().enumerate() {
+        store
+            .bindings
+            .iter_mut()
+            .find(|binding| &binding.id == id)
+            .expect("validated favorite")
+            .favorite_order =
+            u32::try_from(index + 1).context("too many favorites to persist their order")?;
+    }
+    write_store(&store)?;
+    Ok(store)
 }
 
 pub async fn execute_binding(id: &str, config: &AppConfig) -> Result<String> {
@@ -458,6 +498,79 @@ mod tests {
             assert_eq!(reloaded.bindings[0].label, "Updated");
             assert_eq!(reloaded.bindings[0].hotkey, "Ctrl+H");
             assert!(fs::read_to_string(path).is_ok());
+        });
+    }
+
+    #[test]
+    fn reorder_normalizes_all_favorites_and_preserves_other_binding_fields() {
+        with_temp_home(|| {
+            save_binding(binding("home", "Home", true, 7)).unwrap();
+            save_binding(binding("spotify", "Spotify", true, 7)).unwrap();
+            save_binding(binding("other", "Other", false, 12)).unwrap();
+            let before = list_bindings().unwrap();
+            let reordered = reorder_favorites(&["spotify".into(), "home".into()]).unwrap();
+            assert_eq!(reordered.bindings[0].favorite_order, 2);
+            assert_eq!(reordered.bindings[1].favorite_order, 1);
+            for (old, new) in before.bindings.iter().zip(&reordered.bindings) {
+                let mut expected = serde_json::to_value(old).unwrap();
+                if old.favorite {
+                    expected["favorite_order"] = new.favorite_order.into();
+                }
+                assert_eq!(expected, serde_json::to_value(new).unwrap());
+            }
+            assert_eq!(
+                serde_json::to_value(list_bindings().unwrap()).unwrap(),
+                serde_json::to_value(reordered).unwrap()
+            );
+            assert_eq!(
+                fs::read_dir(stored_bindings_path().parent().unwrap())
+                    .unwrap()
+                    .count(),
+                1
+            );
+        });
+    }
+
+    #[test]
+    fn invalid_reorders_leave_persisted_bindings_unchanged() {
+        with_temp_home(|| {
+            save_binding(binding("a", "A", true, 3)).unwrap();
+            save_binding(binding("b", "B", true, 8)).unwrap();
+            save_binding(binding("other", "Other", false, 0)).unwrap();
+            let original = fs::read(stored_bindings_path()).unwrap();
+            for ids in [
+                vec!["a", "missing"],
+                vec!["a", "a"],
+                vec!["a"],
+                vec![],
+                vec!["a", "other"],
+                vec!["a", "b", "other"],
+            ] {
+                let ids = ids.into_iter().map(str::to_string).collect::<Vec<_>>();
+                assert!(reorder_favorites(&ids).is_err(), "accepted {ids:?}");
+                assert_eq!(fs::read(stored_bindings_path()).unwrap(), original);
+            }
+        });
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_reorder_replacement_keeps_the_complete_old_order() {
+        use std::os::windows::fs::OpenOptionsExt;
+        with_temp_home(|| {
+            save_binding(binding("a", "A", true, 3)).unwrap();
+            save_binding(binding("b", "B", true, 8)).unwrap();
+            let path = stored_bindings_path();
+            let original = fs::read(&path).unwrap();
+            let held_file = OpenOptions::new()
+                .read(true)
+                .share_mode(1)
+                .open(&path)
+                .unwrap();
+            assert!(reorder_favorites(&["b".into(), "a".into()]).is_err());
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert_eq!(fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
+            drop(held_file);
         });
     }
 }

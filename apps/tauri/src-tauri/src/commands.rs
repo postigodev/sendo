@@ -57,6 +57,11 @@ pub async fn bindings_save(binding: Binding) -> Result<BindingStore, String> {
 }
 
 #[command]
+pub async fn bindings_reorder_favorites(ids: Vec<String>) -> Result<BindingStore, String> {
+    run_blocking(move || bindings::reorder_favorites(&ids).map_err(|e| format!("{e:#}"))).await
+}
+
+#[command]
 pub async fn bindings_delete(id: String) -> Result<BindingStore, String> {
     run_blocking(move || bindings::delete_binding(&id).map_err(|e| e.to_string())).await
 }

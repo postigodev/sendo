@@ -1222,13 +1222,7 @@ async function reorderFavoriteBindings(sourceId: string, targetId: string) {
   render();
 
   try {
-    let latestStore = { bindings: currentBindings };
-    for (const binding of reorderedFavorites) {
-      latestStore = await api.bindingsSave({
-        ...binding,
-        favorite_order: reorderedById.get(binding.id)!.favorite_order,
-      });
-    }
+    const latestStore = await api.bindingsReorderFavorites(reorderedFavorites.map((binding) => binding.id));
     currentBindings = latestStore.bindings;
     busy = false;
     flash("Quick Access order updated.");

@@ -37,6 +37,7 @@ pub fn run() {
             commands::save_settings,
             commands::bindings_list,
             commands::bindings_save,
+            commands::bindings_reorder_favorites,
             commands::bindings_delete,
             commands::bindings_execute,
             commands::health_check,
