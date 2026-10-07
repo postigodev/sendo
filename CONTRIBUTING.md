@@ -34,7 +34,7 @@ If you want to contribute code, start by opening an issue or picking an existing
 - Rust toolchain
 - Android Platform Tools with `adb` in `PATH`
 - Fire TV with ADB debugging enabled for manual device testing
-- Spotify Developer app credentials for Spotify auth flows
+- Spotify Developer app client ID for Spotify PKCE auth flows
 
 After installing Android Platform Tools, open a new PowerShell window and verify:
 
@@ -48,8 +48,9 @@ If `adb` is not found, add the Platform Tools directory to the Windows user
 machine must be on the same network, ADB debugging must be enabled on the TV,
 and the TV may show an authorization prompt on the first connection.
 
-Spotify flows require a Spotify Developer app. Use the app's client ID, client
-secret, and the redirect URL expected by Sendo. When testing playback routing,
+Spotify flows require a Spotify Developer app. Use its public client ID and
+register the HTTP loopback redirect URL expected by Sendo. Authorization Code
+with PKCE does not require a client secret. When testing playback routing,
 select the explicit Spotify Connect target in the app instead of relying on the
 currently active Spotify device.
 

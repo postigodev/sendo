@@ -700,6 +700,7 @@ name = "desk_remote_core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "rand 0.9.2",
  "rspotify",
  "serde",

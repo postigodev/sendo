@@ -66,7 +66,6 @@ export function renderSpotify({
           </summary>
           <form class="spotify-settings-form" id="spotify-settings-form">
             ${settingsField("spotify-client-id", "Client ID", currentConfig.spotify_client_id, "your-client-id")}
-            ${settingsField("spotify-client-secret", "Client secret", currentConfig.spotify_client_secret, "your-client-secret")}
             ${settingsField("spotify-redirect-url", "Redirect URL", currentConfig.spotify_redirect_url, "http://127.0.0.1:8888/callback")}
             ${
               currentConfig.spotify_selected_device_id.trim()
@@ -75,7 +74,7 @@ export function renderSpotify({
             }
             ${settingsField("spotify-target-hints", "Target hints", currentConfig.spotify_target_hints, "fire, tv, amazon")}
             <div class="spotify-form-footer">
-              <p class="meta">Stored locally for Spotify Connect authentication and target matching.</p>
+              <p class="meta">Uses PKCE with your public client ID. No client secret is required.</p>
               <div class="actions">
                 <button class="button-primary" id="save-spotify-settings-button" type="submit" ${busy ? "disabled" : ""}>Save settings</button>
               </div>

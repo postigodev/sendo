@@ -37,7 +37,7 @@ export const site = {
     "Install Sendo on Windows and confirm adb works from a new PowerShell window.",
     "Enable ADB debugging on your Fire TV and approve the first connection prompt.",
     "Add the Fire TV IP address in Sendo, then test the ADB connection.",
-    "Connect Spotify with developer app credentials and the expected redirect URL.",
+    "Connect Spotify with the developer app client ID and registered loopback redirect URL using PKCE.",
     "Select the exact Spotify Connect target device before running an action.",
     "Run Start Spotify on TV and save it as a shortcut if you want.",
   ],
@@ -52,7 +52,7 @@ export const site = {
     },
     {
       title: "Spotify auth fails",
-      body: "Confirm the client ID, client secret, and redirect URL match the Spotify Developer app exactly.",
+      body: "Confirm the client ID and registered loopback redirect URL match the Spotify Developer app exactly. Sendo uses PKCE without a client secret.",
     },
     {
       title: "Auth expired",

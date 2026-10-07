@@ -21,6 +21,7 @@ export const api = {
   saveSettings: (config: AppConfig) => invoke<AppConfig>("save_settings", { config }),
   bindingsList: () => invoke<BindingStore>("bindings_list"),
   bindingsSave: (binding: Binding) => invoke<BindingStore>("bindings_save", { binding }),
+  bindingsReorderFavorites: (ids: string[]) => invoke<BindingStore>("bindings_reorder_favorites", { ids }),
   bindingsDelete: (id: string) => invoke<BindingStore>("bindings_delete", { id }),
   bindingsExecute: (id: string) => invoke<ActionResult>("bindings_execute", { id }),
   healthCheck: () => invoke<HealthStatus>("health_check"),

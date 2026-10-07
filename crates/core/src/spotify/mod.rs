@@ -5,7 +5,7 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use rand::{distr::Alphanumeric, Rng};
 use rspotify::{
-    clients::OAuthClient, model::AdditionalType, prelude::BaseClient, scopes, AuthCodeSpotify,
+    clients::OAuthClient, model::AdditionalType, prelude::BaseClient, scopes, AuthCodePkceSpotify,
     Config, Credentials, OAuth,
 };
 use serde::Serialize;
@@ -18,6 +18,67 @@ use tokio::{
 use url::Url;
 
 const AUTH_CALLBACK_TIMEOUT: Duration = Duration::from_secs(120);
+static TOKEN_CACHE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+// rspotify 0.15.3's PKCE client drops the old refresh token when Spotify omits
+// a replacement. Delegate OAuth to the SDK and preserve that optional field.
+#[derive(Clone, Debug, Default)]
+struct SpotifyClient(AuthCodePkceSpotify);
+
+impl std::ops::Deref for SpotifyClient {
+    type Target = AuthCodePkceSpotify;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for SpotifyClient {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[async_trait::async_trait]
+impl BaseClient for SpotifyClient {
+    fn get_http(&self) -> &rspotify::http::HttpClient {
+        self.0.get_http()
+    }
+    fn get_token(&self) -> std::sync::Arc<rspotify::sync::Mutex<Option<rspotify::Token>>> {
+        self.0.get_token()
+    }
+    fn get_creds(&self) -> &Credentials {
+        self.0.get_creds()
+    }
+    fn get_config(&self) -> &Config {
+        self.0.get_config()
+    }
+    async fn refetch_token(&self) -> rspotify::ClientResult<Option<rspotify::Token>> {
+        let previous = self
+            .get_token()
+            .lock()
+            .await
+            .unwrap()
+            .as_ref()
+            .and_then(|token| token.refresh_token.clone());
+        let mut refreshed = self.0.refetch_token().await?;
+        if let Some(token) = refreshed.as_mut() {
+            if token.refresh_token.is_none() {
+                token.refresh_token = previous;
+            }
+        }
+        Ok(refreshed)
+    }
+}
+
+#[async_trait::async_trait]
+impl OAuthClient for SpotifyClient {
+    fn get_oauth(&self) -> &OAuth {
+        self.0.get_oauth()
+    }
+    async fn request_token(&self, code: &str) -> rspotify::ClientResult<()> {
+        self.0.request_token(code).await
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SpotifyNowPlaying {
@@ -83,8 +144,8 @@ pub struct SpotifyAuthStart {
     pub token_cache_path: String,
 }
 
-pub fn status_summary(client_id: &str, client_secret: &str, redirect_url: &str) -> String {
-    match validate_spotify_config(client_id, client_secret, redirect_url) {
+pub fn status_summary(client_id: &str, redirect_url: &str) -> String {
+    match validate_spotify_config(client_id, redirect_url) {
         Ok(()) => "Spotify OAuth settings are present".into(),
         Err(reason) => reason.into(),
     }
@@ -113,9 +174,7 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
     }
 
     let spotify = build_spotify(config)?;
-    let auth_url = spotify
-        .get_authorize_url(false)
-        .context("failed to generate Spotify authorize URL")?;
+    let auth_url = (!config.spotify_auth_url.is_empty()).then(|| config.spotify_auth_url.clone());
 
     let auth_result = ensure_token(&spotify).await;
     let authenticated = auth_result.is_ok();
@@ -146,7 +205,7 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
             playback_device_name: None,
             now_playing: None,
             summary: auth_summary,
-            auth_url: Some(auth_url),
+            auth_url,
             token_cache_path,
         });
     }
@@ -207,7 +266,7 @@ pub async fn get_status(config: &AppConfig) -> Result<SpotifyStatus> {
         playback_device_name: playback.device_name,
         now_playing,
         summary,
-        auth_url: Some(auth_url),
+        auth_url,
         token_cache_path,
     })
 }
@@ -217,18 +276,19 @@ pub async fn start_auth(config: &AppConfig) -> Result<SpotifyAuthStart> {
         bail!("{}", spotify_config_error(config));
     }
 
-    let spotify = build_spotify(config)?;
-    let authorize_url = spotify
-        .get_authorize_url(false)
-        .context("failed to generate Spotify authorize URL")?;
+    validate_pending_auth(config)?;
 
     Ok(SpotifyAuthStart {
-        authorize_url,
+        authorize_url: config.spotify_auth_url.clone(),
         token_cache_path: token_cache_path()?.display().to_string(),
     })
 }
 
 pub fn prepare_auth(config: &mut AppConfig) -> Result<()> {
+    prepare_auth_at(config, token_cache_path()?)
+}
+
+fn prepare_auth_at(config: &mut AppConfig, cache_path: PathBuf) -> Result<()> {
     if !spotify_configured(config) {
         bail!("{}", spotify_config_error(config));
     }
@@ -239,6 +299,17 @@ pub fn prepare_auth(config: &mut AppConfig) -> Result<()> {
         .map(char::from)
         .collect();
 
+    let mut spotify = spotify_client(config, cache_path);
+    // Each authorize-URL call generates a new verifier. Persist the pair once
+    // so independently rebuilt callback clients exchange the matching verifier.
+    config.spotify_auth_url = spotify
+        .get_authorize_url(None)
+        .context("failed to generate Spotify PKCE authorize URL")?;
+    config.spotify_auth_verifier = spotify
+        .verifier
+        .take()
+        .context("Spotify did not generate a PKCE verifier")?;
+
     Ok(())
 }
 
@@ -247,6 +318,7 @@ pub async fn finish_auth(config: &AppConfig, code_or_callback: &str) -> Result<S
         bail!("{}", spotify_config_error(config));
     }
 
+    validate_pending_auth(config)?;
     let spotify = build_spotify(config)?;
     ensure_token_cache_dir()?;
 
@@ -260,6 +332,7 @@ pub async fn finish_auth_via_local_callback(config: &AppConfig) -> Result<Spotif
         bail!("{}", spotify_config_error(config));
     }
 
+    validate_pending_auth(config)?;
     let spotify = build_spotify(config)?;
     ensure_token_cache_dir()?;
     let socket_addr = spotify
@@ -268,10 +341,7 @@ pub async fn finish_auth_via_local_callback(config: &AppConfig) -> Result<Spotif
     let code =
         receive_auth_code_from_local_callback(&spotify, socket_addr, AUTH_CALLBACK_TIMEOUT).await?;
 
-    spotify
-        .request_token(&code)
-        .await
-        .context("failed to exchange Spotify authorization code for a token")?;
+    exchange_auth_code(&spotify, &code).await?;
 
     get_status(config).await
 }
@@ -301,7 +371,7 @@ pub async fn toggle_on_tv(config: &AppConfig) -> Result<String> {
     }
 
     let spotify = build_spotify(config)?;
-    ensure_token(&spotify).await?;
+    let _token_guard = ensure_token(&spotify).await?;
 
     let target = resolve_control_target(config, &spotify).await?;
     let target_id = target.id.clone();
@@ -354,7 +424,7 @@ pub async fn transfer_to_tv(config: &AppConfig) -> Result<String> {
     }
 
     let spotify = build_spotify(config)?;
-    ensure_token(&spotify).await?;
+    let _token_guard = ensure_token(&spotify).await?;
 
     let target = resolve_control_target(config, &spotify).await?;
     let target_id = target.id.clone();
@@ -378,7 +448,7 @@ pub async fn toggle_playback(config: &AppConfig) -> Result<String> {
     }
 
     let spotify = build_spotify(config)?;
-    ensure_token(&spotify).await?;
+    let _token_guard = ensure_token(&spotify).await?;
 
     let target = resolve_control_target(config, &spotify).await?;
     let target_id = target.id.clone();
@@ -419,7 +489,7 @@ pub async fn skip_next(config: &AppConfig) -> Result<String> {
     }
 
     let spotify = build_spotify(config)?;
-    ensure_token(&spotify).await?;
+    let _token_guard = ensure_token(&spotify).await?;
     let target = resolve_control_target(config, &spotify).await?;
     let target_id = target.id.clone();
     spotify
@@ -435,7 +505,7 @@ pub async fn skip_previous(config: &AppConfig) -> Result<String> {
     }
 
     let spotify = build_spotify(config)?;
-    ensure_token(&spotify).await?;
+    let _token_guard = ensure_token(&spotify).await?;
     let target = resolve_control_target(config, &spotify).await?;
     let target_id = target.id.clone();
     spotify
@@ -447,36 +517,56 @@ pub async fn skip_previous(config: &AppConfig) -> Result<String> {
 
 pub async fn start_on_tv(config: &AppConfig) -> Result<String> {
     let firetv_result = crate::firetv::prepare_spotify_session(&config.firetv_ip)?;
-    let spotify_result = toggle_on_tv(config).await?;
+    if !spotify_configured(config) {
+        bail!("{}", spotify_config_error(config));
+    }
+    let spotify = build_spotify(config)?;
+    let _token_guard = ensure_token(&spotify).await?;
+    let target = resolve_control_target(config, &spotify).await?;
+    let spotify_result = ensure_target_playing(&spotify, &target).await?;
 
     Ok(format!("{}. {}", firetv_result.summary, spotify_result))
 }
 
+async fn ensure_target_playing(spotify: &SpotifyClient, target: &TargetDevice) -> Result<String> {
+    let playback = spotify
+        .current_playback(None, Some(&[AdditionalType::Episode]))
+        .await
+        .context("failed to fetch current Spotify playback")?;
+    let on_target =
+        playback.as_ref().and_then(|item| item.device.id.as_deref()) == Some(target.id.as_str());
+    if on_target && playback.as_ref().is_some_and(|item| item.is_playing) {
+        return Ok(format!("Spotify is already playing on {}", target.name));
+    }
+    if !on_target {
+        spotify
+            .transfer_playback(&target.id, Some(false))
+            .await
+            .context("failed to transfer Spotify playback to TV")?;
+        sleep(Duration::from_millis(300)).await;
+    }
+    spotify
+        .resume_playback(Some(&target.id), None)
+        .await
+        .context("failed to resume playback on TV")?;
+    Ok(format!("Started Spotify on {}", target.name))
+}
+
 fn spotify_configured(config: &AppConfig) -> bool {
-    validate_spotify_config(
-        &config.spotify_client_id,
-        &config.spotify_client_secret,
-        &config.spotify_redirect_url,
-    )
-    .is_ok()
+    validate_spotify_config(&config.spotify_client_id, &config.spotify_redirect_url).is_ok()
 }
 
 fn spotify_config_error(config: &AppConfig) -> &'static str {
-    validate_spotify_config(
-        &config.spotify_client_id,
-        &config.spotify_client_secret,
-        &config.spotify_redirect_url,
-    )
-    .expect_err("spotify_config_error called for an invalid config")
+    validate_spotify_config(&config.spotify_client_id, &config.spotify_redirect_url)
+        .expect_err("spotify_config_error called for an invalid config")
 }
 
-fn validate_spotify_config(
+pub(crate) fn validate_spotify_config(
     client_id: &str,
-    client_secret: &str,
     redirect_url: &str,
 ) -> Result<(), &'static str> {
-    if client_id.trim().is_empty() || client_secret.trim().is_empty() {
-        return Err("Spotify client ID and client secret are required");
+    if client_id.trim().is_empty() {
+        return Err("Spotify client ID is required");
     }
 
     validate_redirect_url(redirect_url)
@@ -507,10 +597,13 @@ fn validate_redirect_url(redirect_url: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-fn build_spotify(config: &AppConfig) -> Result<AuthCodeSpotify> {
+fn build_spotify(config: &AppConfig) -> Result<SpotifyClient> {
     ensure_token_cache_dir()?;
+    Ok(spotify_client(config, token_cache_path()?))
+}
 
-    let creds = Credentials::new(&config.spotify_client_id, &config.spotify_client_secret);
+fn spotify_client(config: &AppConfig, cache_path: PathBuf) -> SpotifyClient {
+    let creds = Credentials::new_pkce(&config.spotify_client_id);
     let oauth = OAuth {
         redirect_uri: config.spotify_redirect_url.clone(),
         state: config.spotify_auth_state.clone(),
@@ -525,14 +618,35 @@ fn build_spotify(config: &AppConfig) -> Result<AuthCodeSpotify> {
     let client_config = Config {
         token_cached: true,
         token_refreshing: true,
-        cache_path: token_cache_path()?,
+        cache_path,
         ..Default::default()
     };
 
-    Ok(AuthCodeSpotify::with_config(creds, oauth, client_config))
+    let mut spotify = AuthCodePkceSpotify::with_config(creds, oauth, client_config);
+    spotify.verifier =
+        (!config.spotify_auth_verifier.is_empty()).then(|| config.spotify_auth_verifier.clone());
+    SpotifyClient(spotify)
 }
 
-async fn ensure_token(spotify: &AuthCodeSpotify) -> Result<()> {
+fn validate_pending_auth(config: &AppConfig) -> Result<()> {
+    if config.spotify_auth_state.is_empty()
+        || config.spotify_auth_url.is_empty()
+        || !(43..=128).contains(&config.spotify_auth_verifier.len())
+    {
+        bail!("No pending Spotify PKCE login. Start Spotify auth again before completing the callback.");
+    }
+    Ok(())
+}
+
+// PKCE refresh tokens rotate. Keep this guard through the API operation too:
+// rspotify can automatically refresh between requests in a multi-step action.
+async fn ensure_token(spotify: &SpotifyClient) -> Result<tokio::sync::MutexGuard<'static, ()>> {
+    let guard = TOKEN_CACHE_LOCK.lock().await;
+    load_or_refresh_token(spotify).await?;
+    Ok(guard)
+}
+
+async fn load_or_refresh_token(spotify: &SpotifyClient) -> Result<()> {
     if let Ok(Some(cached_token)) = spotify.read_token_cache(true).await {
         let is_expired = cached_token.is_expired();
 
@@ -582,7 +696,7 @@ async fn ensure_token(spotify: &AuthCodeSpotify) -> Result<()> {
 
 async fn resolve_control_target(
     config: &AppConfig,
-    spotify: &AuthCodeSpotify,
+    spotify: &SpotifyClient,
 ) -> Result<TargetDevice> {
     for attempt in 0..5 {
         let available_devices =
@@ -609,7 +723,7 @@ async fn resolve_control_target(
 }
 
 async fn fetch_available_devices(
-    spotify: &AuthCodeSpotify,
+    spotify: &SpotifyClient,
     hints: &[String],
 ) -> Result<Vec<SpotifyDevice>> {
     let devices = spotify
@@ -702,7 +816,7 @@ fn is_playback_on_target(target: Option<&TargetDevice>, playback: &PlaybackSnaps
         .is_some_and(|(target_id, playback_id)| target_id == playback_id)
 }
 
-async fn fetch_playback_snapshot(spotify: &AuthCodeSpotify) -> Result<PlaybackSnapshot> {
+async fn fetch_playback_snapshot(spotify: &SpotifyClient) -> Result<PlaybackSnapshot> {
     let playback = spotify
         .current_playback(None, Some(&[AdditionalType::Episode]))
         .await?;
@@ -816,10 +930,7 @@ fn extract_auth_code(code_or_callback: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
-async fn exchange_callback_or_code(
-    spotify: &AuthCodeSpotify,
-    code_or_callback: &str,
-) -> Result<()> {
+async fn exchange_callback_or_code(spotify: &SpotifyClient, code_or_callback: &str) -> Result<()> {
     let code = if code_or_callback.contains("://") {
         spotify
             .parse_response_code(code_or_callback)
@@ -832,8 +943,13 @@ async fn exchange_callback_or_code(
         extract_auth_code(code_or_callback)?
     };
 
+    exchange_auth_code(spotify, &code).await
+}
+
+async fn exchange_auth_code(spotify: &SpotifyClient, code: &str) -> Result<()> {
+    let _guard = TOKEN_CACHE_LOCK.lock().await;
     spotify
-        .request_token(&code)
+        .request_token(code)
         .await
         .context("failed to exchange Spotify authorization code for a token")?;
 
@@ -841,7 +957,7 @@ async fn exchange_callback_or_code(
 }
 
 async fn receive_auth_code_from_local_callback(
-    spotify: &AuthCodeSpotify,
+    spotify: &SpotifyClient,
     socket_addr: std::net::SocketAddr,
     wait_timeout: Duration,
 ) -> Result<String> {
@@ -912,6 +1028,480 @@ fn ensure_token_cache_dir() -> Result<()> {
 mod tests {
     use super::*;
 
+    fn public_config() -> AppConfig {
+        AppConfig {
+            spotify_client_id: "public-client".into(),
+            spotify_redirect_url: "http://127.0.0.1:8888/callback".into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn pkce_session_survives_config_roundtrip_and_validates_callback_state() {
+        let mut config = public_config();
+        prepare_auth_at(&mut config, PathBuf::from("unused-cache.json")).unwrap();
+        let original = config.clone();
+        let config: AppConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        let spotify = spotify_client(&config, PathBuf::from("unused-cache.json"));
+        let url = Url::parse(&config.spotify_auth_url).unwrap();
+        let params = url
+            .query_pairs()
+            .collect::<std::collections::HashMap<_, _>>();
+        assert_eq!(params["client_id"], "public-client");
+        assert_eq!(params["response_type"], "code");
+        assert_eq!(params["code_challenge_method"], "S256");
+        assert_eq!(params["code_challenge"].len(), 43);
+        assert_eq!(params["state"], config.spotify_auth_state);
+        assert_eq!(
+            spotify.verifier.as_deref(),
+            Some(config.spotify_auth_verifier.as_str())
+        );
+        assert!(spotify.creds.secret.is_none());
+        assert!(spotify.config.token_cached && spotify.config.token_refreshing);
+        assert_eq!(config.spotify_auth_url, original.spotify_auth_url);
+        assert_eq!(
+            spotify.parse_response_code(&format!(
+                "{}?code=valid&state={}",
+                config.spotify_redirect_url, config.spotify_auth_state
+            )),
+            Some("valid".into())
+        );
+        for query in ["code=wrong&state=older", "code=wrong"] {
+            assert!(spotify
+                .parse_response_code(&format!("{}?{query}", config.spotify_redirect_url))
+                .is_none());
+        }
+        let mut new_session = config.clone();
+        prepare_auth_at(&mut new_session, PathBuf::from("unused-cache.json")).unwrap();
+        assert_ne!(new_session.spotify_auth_state, config.spotify_auth_state);
+        assert_ne!(
+            new_session.spotify_auth_verifier,
+            config.spotify_auth_verifier
+        );
+        assert_ne!(new_session.spotify_auth_url, config.spotify_auth_url);
+    }
+
+    #[tokio::test]
+    async fn legacy_pending_login_requests_reauthentication_instead_of_panicking() {
+        let config = public_config();
+        let error = finish_auth(&config, "code").await.unwrap_err();
+        assert!(error.to_string().contains("Start Spotify auth again"));
+    }
+
+    struct TokenCacheDir(PathBuf);
+    impl Drop for TokenCacheDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn token_cache_dir() -> TokenCacheDir {
+        let directory =
+            std::env::temp_dir().join(format!("sendo-pkce-test-{:016x}", rand::random::<u64>()));
+        fs::create_dir(&directory).unwrap();
+        TokenCacheDir(directory)
+    }
+    fn token_response() -> String {
+        serde_json::json!({"access_token": "fresh-token", "token_type": "Bearer",
+            "expires_in": 3600, "refresh_token": "rotated-refresh",
+            "scope": "user-read-playback-state user-modify-playback-state user-read-currently-playing"}).to_string()
+    }
+
+    #[tokio::test]
+    async fn pkce_exchange_uses_persisted_verifier_without_a_client_secret_and_caches_token() {
+        let directory = token_cache_dir();
+        let path = directory.0.join("spotify-token.json");
+        let mut config = public_config();
+        prepare_auth_at(&mut config, path.clone()).unwrap();
+        let persisted: AppConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        let (base_url, server) =
+            spotify_server(vec![(200, token_response()), (200, token_response())]).await;
+        let mut spotify = spotify_client(&persisted, path.clone());
+        spotify.config.auth_base_url = base_url;
+        assert!(exchange_callback_or_code(
+            &spotify,
+            &format!("{}?code=wrong&state=older", persisted.spotify_redirect_url,)
+        )
+        .await
+        .is_err());
+        exchange_callback_or_code(
+            &spotify,
+            &format!(
+                "{}?code=auth-code&state={}",
+                persisted.spotify_redirect_url, persisted.spotify_auth_state
+            ),
+        )
+        .await
+        .unwrap();
+        exchange_callback_or_code(&spotify, "manual-code")
+            .await
+            .unwrap();
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 2);
+        for (request, code) in requests.iter().zip(["auth-code", "manual-code"]) {
+            assert!(request.starts_with("POST /api/token "));
+            assert!(!request
+                .to_ascii_lowercase()
+                .contains("authorization: basic"));
+            let form =
+                url::form_urlencoded::parse(request.rsplit("\r\n").next().unwrap().as_bytes())
+                    .collect::<std::collections::HashMap<_, _>>();
+            assert_eq!(form["grant_type"], "authorization_code");
+            assert_eq!(form["client_id"], "public-client");
+            assert_eq!(form["code"], code);
+            assert_eq!(form["code_verifier"], persisted.spotify_auth_verifier);
+            assert!(!form.contains_key("client_secret"));
+        }
+        let cached: rspotify::Token =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(cached.access_token, "fresh-token");
+        let restarted = spotify_client(&persisted, path);
+        drop(ensure_token(&restarted).await.unwrap());
+        assert_eq!(
+            restarted
+                .get_token()
+                .lock()
+                .await
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .access_token,
+            "fresh-token"
+        );
+    }
+
+    #[tokio::test]
+    async fn pkce_refresh_retains_cache_and_persists_rotated_refresh_token() {
+        let directory = token_cache_dir();
+        let path = directory.0.join("spotify-token.json");
+        let mut expired: serde_json::Value = serde_json::from_str(&token_response()).unwrap();
+        expired["expires_at"] = "2000-01-01T00:00:00Z".into();
+        expired["refresh_token"] = "old-refresh".into();
+        fs::write(&path, expired.to_string()).unwrap();
+        let (base_url, server) = spotify_server(vec![(200, token_response())]).await;
+        let mut spotify = spotify_client(&public_config(), path.clone());
+        spotify.config.auth_base_url = base_url;
+        drop(ensure_token(&spotify).await.unwrap());
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].contains("grant_type=refresh_token"));
+        assert!(requests[0].contains("refresh_token=old-refresh"));
+        assert!(requests[0].contains("client_id=public-client"));
+        assert!(!requests[0].contains("client_secret"));
+        let cached: rspotify::Token =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(cached.refresh_token.as_deref(), Some("rotated-refresh"));
+        let restarted = spotify_client(&public_config(), path);
+        drop(ensure_token(&restarted).await.unwrap());
+        assert_eq!(
+            restarted
+                .get_token()
+                .lock()
+                .await
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .refresh_token
+                .as_deref(),
+            Some("rotated-refresh")
+        );
+    }
+
+    #[tokio::test]
+    async fn pkce_refresh_without_a_replacement_retains_the_existing_refresh_token() {
+        let directory = token_cache_dir();
+        let path = directory.0.join("spotify-token.json");
+        let mut expired: serde_json::Value = serde_json::from_str(&token_response()).unwrap();
+        expired["expires_at"] = "2000-01-01T00:00:00Z".into();
+        expired["refresh_token"] = "old-refresh".into();
+        fs::write(&path, expired.to_string()).unwrap();
+        let mut response: serde_json::Value = serde_json::from_str(&token_response()).unwrap();
+        response.as_object_mut().unwrap().remove("refresh_token");
+        let (base_url, server) =
+            spotify_server(vec![(200, response.to_string()), (200, token_response())]).await;
+        let mut spotify = spotify_client(&public_config(), path.clone());
+        spotify.config.auth_base_url = base_url;
+        drop(ensure_token(&spotify).await.unwrap());
+        let cached: rspotify::Token =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(cached.refresh_token.as_deref(), Some("old-refresh"));
+        // Exercise the same refresh method used by the SDK's automatic renewal.
+        spotify.refresh_token().await.unwrap();
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests
+            .iter()
+            .all(|request| request.contains("refresh_token=old-refresh")));
+        let cached: rspotify::Token =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(cached.refresh_token.as_deref(), Some("rotated-refresh"));
+    }
+
+    #[tokio::test]
+    async fn concurrent_clients_refresh_a_rotating_token_only_once() {
+        let directory = token_cache_dir();
+        let path = directory.0.join("spotify-token.json");
+        let mut expired: serde_json::Value = serde_json::from_str(&token_response()).unwrap();
+        expired["expires_at"] = "2000-01-01T00:00:00Z".into();
+        expired["refresh_token"] = "old-refresh".into();
+        fs::write(&path, expired.to_string()).unwrap();
+        // A rotating refresh token accepts one request; a second use must fail.
+        let (base_url, server) = spotify_server(vec![(200, token_response())]).await;
+        let mut first = spotify_client(&public_config(), path.clone());
+        first.config.auth_base_url = base_url.clone();
+        let mut second = spotify_client(&public_config(), path);
+        second.config.auth_base_url = base_url;
+        let (a, b) = tokio::join!(async { ensure_token(&first).await.map(|_| ()) }, async {
+            ensure_token(&second).await.map(|_| ())
+        });
+        a.unwrap();
+        b.unwrap();
+        assert_eq!(server.await.unwrap().len(), 1);
+        for client in [&first, &second] {
+            assert_eq!(
+                client
+                    .get_token()
+                    .lock()
+                    .await
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .refresh_token
+                    .as_deref(),
+                Some("rotated-refresh")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn loopback_callback_preserves_state_validation_for_pkce() {
+        use tokio::{io::AsyncReadExt, net::TcpStream};
+        for (state, valid) in [("expected", true), ("older", false)] {
+            let reservation = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = reservation.local_addr().unwrap();
+            drop(reservation);
+            let spotify = SpotifyClient(AuthCodePkceSpotify::new(
+                Credentials::new_pkce("public-client"),
+                OAuth {
+                    state: "expected".into(),
+                    redirect_uri: format!("http://{address}/callback"),
+                    ..Default::default()
+                },
+            ));
+            let receiver = tokio::spawn(async move {
+                receive_auth_code_from_local_callback(&spotify, address, Duration::from_secs(2))
+                    .await
+            });
+            let mut stream = None;
+            for _ in 0..20 {
+                if let Ok(connected) = TcpStream::connect(address).await {
+                    stream = Some(connected);
+                    break;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+            let mut stream = stream.expect("callback listener bound");
+            stream
+                .write_all(
+                    format!("GET /callback?code=auth-code&state={state} HTTP/1.1\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).await.unwrap();
+            let result = receiver.await.unwrap();
+            assert_eq!(result.is_ok(), valid);
+            if valid {
+                assert_eq!(result.unwrap(), "auth-code");
+            }
+            assert!(response.starts_with("HTTP/1.1 200 OK"));
+        }
+    }
+
+    async fn spotify_server(
+        responses: Vec<(u16, String)>,
+    ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+        use tokio::io::AsyncReadExt;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut requests = Vec::new();
+            for (status, body) in responses {
+                let (mut stream, _) = timeout(Duration::from_secs(5), listener.accept())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let mut reader = BufReader::new(&mut stream);
+                let mut request = String::new();
+                let mut length = 0;
+                loop {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).await.unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        length = value.trim().parse::<usize>().unwrap();
+                    }
+                    request.push_str(&line);
+                }
+                let mut payload = vec![0; length];
+                reader.read_exact(&mut payload).await.unwrap();
+                request.push_str(std::str::from_utf8(&payload).unwrap());
+                requests.push(request);
+                stream.write_all(format!(
+                    "HTTP/1.1 {status} Test\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len()
+                ).as_bytes()).await.unwrap();
+            }
+            requests
+        });
+        (format!("http://{address}/"), server)
+    }
+
+    async fn playback_client(
+        device_id: &str,
+        is_playing: bool,
+        write_statuses: &[u16],
+    ) -> (SpotifyClient, tokio::task::JoinHandle<Vec<String>>) {
+        let body = serde_json::json!({
+            "device": {"id": device_id, "name": "TV", "is_active": true,
+                "is_private_session": false, "is_restricted": false,
+                "type": "TV", "volume_percent": 50},
+            "repeat_state": "off", "shuffle_state": false,
+            "timestamp": 0, "is_playing": is_playing, "item": null,
+            "currently_playing_type": "unknown", "actions": {"disallows": {}}
+        })
+        .to_string();
+        let mut responses = vec![(200, body)];
+        responses.extend(write_statuses.iter().map(|status| (*status, String::new())));
+        let (base_url, server) = spotify_server(responses).await;
+        (test_playback_client(base_url), server)
+    }
+
+    fn test_playback_client(base_url: String) -> SpotifyClient {
+        SpotifyClient(AuthCodePkceSpotify::from_token_with_config(
+            rspotify::Token {
+                access_token: "test-token".into(),
+                ..Default::default()
+            },
+            Credentials::default(),
+            OAuth::default(),
+            Config {
+                api_base_url: base_url,
+                token_refreshing: false,
+                ..Default::default()
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn start_leaves_already_playing_target_running_on_repeated_calls() {
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "TV".into(),
+        };
+        for _ in 0..2 {
+            let (spotify, server) = playback_client("tv", true, &[]).await;
+            assert_eq!(
+                ensure_target_playing(&spotify, &target).await.unwrap(),
+                "Spotify is already playing on TV"
+            );
+            let requests = server.await.unwrap();
+            assert_eq!(requests.len(), 1);
+            assert!(requests[0].starts_with("GET /me/player?"));
+        }
+    }
+
+    #[tokio::test]
+    async fn start_resumes_paused_target_and_routes_playback_elsewhere() {
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "TV".into(),
+        };
+        let (spotify, server) = playback_client("tv", false, &[204]).await;
+        ensure_target_playing(&spotify, &target).await.unwrap();
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[1].starts_with("PUT /me/player/play?device_id=tv "));
+
+        let (spotify, server) = playback_client("phone", true, &[204, 204]).await;
+        ensure_target_playing(&spotify, &target).await.unwrap();
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 3);
+        assert!(requests[1].starts_with("PUT /me/player "));
+        assert!(requests[1].contains("\"device_ids\":[\"tv\"]"));
+        assert!(requests[2].starts_with("PUT /me/player/play?device_id=tv "));
+    }
+
+    #[tokio::test]
+    async fn start_routes_an_absent_session_and_leaves_the_result_playing() {
+        let playing = serde_json::json!({
+            "device": {"id": "tv", "name": "TV", "is_active": true,
+                "is_private_session": false, "is_restricted": false,
+                "type": "TV", "volume_percent": 50},
+            "repeat_state": "off", "shuffle_state": false,
+            "timestamp": 0, "is_playing": true, "item": null,
+            "currently_playing_type": "unknown", "actions": {"disallows": {}}
+        })
+        .to_string();
+        let (base_url, server) = spotify_server(vec![
+            (204, String::new()),
+            (204, String::new()),
+            (204, String::new()),
+            (200, playing),
+        ])
+        .await;
+        let spotify = test_playback_client(base_url);
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "TV".into(),
+        };
+        assert_eq!(
+            ensure_target_playing(&spotify, &target).await.unwrap(),
+            "Started Spotify on TV"
+        );
+        assert_eq!(
+            ensure_target_playing(&spotify, &target).await.unwrap(),
+            "Spotify is already playing on TV"
+        );
+        let requests = server.await.unwrap();
+        assert_eq!(requests.len(), 4);
+        assert!(requests[1].starts_with("PUT /me/player "));
+        assert!(requests[1].contains("\"device_ids\":[\"tv\"]"));
+        assert!(requests[2].starts_with("PUT /me/player/play?device_id=tv "));
+        assert!(requests[3].starts_with("GET /me/player?"));
+    }
+
+    #[tokio::test]
+    async fn start_reports_transfer_and_resume_failures() {
+        let target = TargetDevice {
+            id: "tv".into(),
+            name: "TV".into(),
+        };
+        for (device, statuses, expected) in [
+            (
+                "phone",
+                vec![500],
+                "failed to transfer Spotify playback to TV",
+            ),
+            ("phone", vec![204, 500], "failed to resume playback on TV"),
+            ("tv", vec![500], "failed to resume playback on TV"),
+        ] {
+            let (spotify, server) = playback_client(device, false, &statuses).await;
+            assert_eq!(
+                ensure_target_playing(&spotify, &target)
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                expected
+            );
+            server.await.unwrap();
+        }
+    }
+
     fn config(selected_device_id: &str) -> AppConfig {
         AppConfig {
             spotify_selected_device_id: selected_device_id.into(),
@@ -944,12 +1534,12 @@ mod tests {
     #[test]
     fn status_summary_explains_invalid_redirect_configuration() {
         assert_eq!(
-            status_summary("client", "secret", "http://127.0.0.1/callback"),
+            status_summary("client", "http://127.0.0.1/callback"),
             "Spotify redirect URL must be an HTTP loopback URL with a port"
         );
         assert_eq!(
-            status_summary("", "secret", "http://127.0.0.1:8888/callback"),
-            "Spotify client ID and client secret are required"
+            status_summary("", "http://127.0.0.1:8888/callback"),
+            "Spotify client ID is required"
         );
     }
 

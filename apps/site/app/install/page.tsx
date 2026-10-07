@@ -19,7 +19,7 @@ const requirements = [
   "Windows",
   "adb available from a new PowerShell window",
   "Fire TV with ADB debugging enabled and authorized",
-  "Spotify Premium plus developer app credentials",
+  "Spotify Premium plus a developer app client ID",
   "Explicit Spotify Connect target selected in Sendo",
 ];
 
@@ -40,7 +40,7 @@ export default async function InstallPage() {
                 </h1>
                 <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 md:text-lg">
                   Download the Windows build, enable Fire TV control over ADB,
-                  connect Spotify with the correct OAuth credentials, select
+                  connect Spotify with the public client ID and redirect URL, select
                   the intended target device, and keep Sendo available from the
                   tray for repeatable media actions.
                 </p>
@@ -151,7 +151,7 @@ export default async function InstallPage() {
                 <p>
                   The install itself is straightforward. Most first-run failures
                   come from missing ADB, Fire TV debugging not enabled or not
-                  authorized, Spotify redirect credentials not matching, or
+                  authorized, the Spotify client ID or redirect URL not matching, or
                   selecting the wrong Spotify device.
                 </p>
                 <p>
@@ -196,7 +196,7 @@ export default async function InstallPage() {
                     03
                   </span>
                   <span>
-                    Authenticate Spotify with the developer app credentials and
+                    Authenticate Spotify using PKCE with the developer app client ID and
                     explicitly select a target.
                   </span>
                 </li>
@@ -341,8 +341,8 @@ function TroubleshootingBody({ title }: { title: string }) {
         <li className="flex gap-3">
           <span className="text-cyan-200">-</span>
           <span>
-            Confirm the client ID, client secret, and redirect URL match the
-            values entered in Sendo.
+            Confirm the client ID and registered loopback redirect URL match the
+            values entered in Sendo. PKCE does not require a client secret.
           </span>
         </li>
         <li className="flex gap-3">

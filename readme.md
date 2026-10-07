@@ -90,7 +90,7 @@ TypeScript UI
 - Android Platform Tools with `adb` in `PATH`
 - Fire TV with ADB debugging enabled
 - Spotify Premium
-- Spotify Developer app credentials
+- Spotify Developer app client ID
 
 On Windows, install Android Platform Tools and make sure the folder that
 contains `adb.exe` is on `PATH`. A quick check from a new PowerShell window is:
@@ -107,11 +107,16 @@ Before first run, enable ADB debugging on the Fire TV, keep the TV and Windows
 machine on the same network, and accept the Fire TV debugging prompt the first
 time Sendo or `adb connect <fire-tv-ip>` reaches the device.
 
-For Spotify, create a Spotify Developer app, copy the client ID and client
-secret into Sendo, and use the redirect URL shown by the app. After
+For Spotify, create a Spotify Developer app, copy its public client ID into
+Sendo, and register the HTTP loopback redirect URL shown by the app. Sendo uses
+Authorization Code with PKCE; no client secret is required. After
 authentication, select the exact Spotify Connect device you want Sendo to
 control; do not rely on Spotify's current-device guess when more than one TV,
 speaker, or browser session is available.
+
+Existing configs with a client secret still load; that obsolete field is ignored
+and removed on the next settings save. The token cache is retained. If an older
+session cannot refresh, authenticate once again to obtain a PKCE session.
 
 ### Clone and install
 
@@ -161,7 +166,7 @@ cd sendo\apps\tauri
 
 1. Configure the Fire TV IP address in `ADB & Device`.
 2. Test the ADB connection and approve the debugging prompt on the TV if it appears.
-3. Configure Spotify OAuth credentials and redirect URL in `Spotify`.
+3. Configure the Spotify client ID and redirect URL in `Spotify`.
 4. Authenticate Spotify and select the exact Spotify Connect target device.
 5. Use `Start Spotify on TV` from Home, tray, or a binding.
 6. Sendo connects to the TV over ADB, wakes it if needed, launches Spotify, and transfers playback to the selected Spotify device.
@@ -173,7 +178,7 @@ cd sendo\apps\tauri
   platform-tools directory is on `PATH` in a new terminal.
 - Fire TV does not connect: confirm ADB debugging is enabled, both devices are
   on the same network, and the TV accepted the debugging authorization prompt.
-- Spotify auth fails: confirm the client ID, client secret, and redirect URL in
+- Spotify auth fails: confirm the client ID and redirect URL in
   Sendo match the Spotify Developer app exactly.
 - Playback transfers to the wrong device: open the Spotify page and select the
   intended Spotify Connect target explicitly before running the action.

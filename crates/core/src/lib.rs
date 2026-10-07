@@ -1,6 +1,7 @@
 pub mod bindings;
 pub mod config;
 pub mod firetv;
+mod persistence;
 pub mod spotify;
 
 use serde::Serialize;

@@ -13,11 +13,12 @@ import type {
 export const defaultConfig: AppConfig = {
   firetv_ip: "",
   spotify_client_id: "",
-  spotify_client_secret: "",
   spotify_redirect_url: "",
   spotify_selected_device_id: "",
   spotify_target_hints: "fire, tv, amazon, spotify, insignia, toshiba, osint",
   spotify_auth_state: "",
+  spotify_auth_verifier: "",
+  spotify_auth_url: "",
   launch_on_startup: false,
   start_minimized_to_tray: true,
 };
